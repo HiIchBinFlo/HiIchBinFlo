@@ -381,7 +381,7 @@ pixel data.
       only ever changes pixels, never geometry. See Phase 4's "Why raw
       vertex editing is out of scope," which this doesn't revisit.
 
-### Real-world testing found three more real bugs
+### Real-world testing found several more real bugs
 
 Design Studio's canvas-based tabs and the drag/resize interaction were
 manually verified with a temporary Playwright-driven debug harness (not
@@ -416,6 +416,33 @@ unrelated to Design Studio:
    thumbnail) — so the badge/name text ended up visually covered by the
    next row. Fixed by wiring up `@tanstack/react-virtual`'s dynamic
    `measureElement` instead of a static estimate.
+3. **The mesh preview would often render blank, and once showed a garbled
+   frame.** Two contributing bugs, found by reading `@react-three/drei`'s
+   and `@react-three/fiber`'s actual source rather than guessing at Three.js
+   behavior: `<Bounds fit>` only auto-fits the camera on mount and on canvas
+   resize (`observe`) — it never re-fits when the mesh geometry inside it
+   changes later, which is exactly what happens switching LOD tabs. And
+   `MeshPreviewDialog` was unmounting/remounting the whole `<MeshPreview>`
+   (and therefore its `<Canvas>`'s WebGL context) on every geometry reload,
+   including every LOD switch — but `react-three-fiber`'s own
+   `unmountComponentAtNode` only calls `gl.forceContextLoss()` inside a
+   `setTimeout(..., 500)`, so switching LOD a few times in quick succession
+   could pile up more live WebGL contexts than the browser/webview allows,
+   silently failing to create a new one (blank) or catching one mid-loss
+   (garbled). Fixed by keeping one `<MeshPreview>` mounted across
+   reloads within a dialog session (`MeshPreviewDialog.tsx`'s
+   `lastReadyParts`, shown with a loading overlay on top instead of being
+   torn down) and adding an explicit `AutoFit` component
+   (`MeshPreview.tsx`) that calls `bounds.refresh().fit()` whenever the
+   geometry actually changes, since nothing else does anymore. Closing and
+   reopening the preview dialog for a *different* item still remounts the
+   canvas (Inspector only renders `MeshPreviewDialog` while open) — that
+   deeper architectural change (keeping the 3D view persistently mounted,
+   hidden via CSS rather than unmounted) was judged too risky to make
+   blind without being able to reproduce the original bug in this
+   project's own dev environment; if blank/garbled previews still happen
+   after switching between *different* items (not LOD tabs) rather than
+   within one, that's the next place to look.
 
 ### Batched thumbnail generation
 

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { Bounds, OrbitControls, useBounds } from "@react-three/drei";
 import * as THREE from "three";
@@ -34,10 +34,29 @@ export function MeshPreview({
       <directionalLight position={[0, -2, -3]} intensity={0.25} color="#ffddaa" />
       <Bounds fit clip observe margin={1.4}>
         <FramedParts parts={parts} textureDataUrl={textureDataUrl} showBoneWeights={showBoneWeights} />
+        <AutoFit parts={parts} />
       </Bounds>
       <OrbitControls makeDefault enableDamping dampingFactor={0.12} />
     </Canvas>
   );
+}
+
+/**
+ * drei's `<Bounds>` only auto-fits the camera on mount and on canvas resize
+ * (`observe`) - it has no idea when the geometry *inside* it changes (e.g.
+ * switching LOD, or reusing an already-mounted preview for a different
+ * item). Without this, the camera stays framed for whatever geometry was
+ * present at mount time, and a differently-sized/positioned mesh loaded
+ * later can end up entirely outside the visible frustum - which looks like
+ * "the preview is just blank." Explicitly refits whenever `parts` changes.
+ */
+function AutoFit({ parts }: { parts: MeshPart[] }) {
+  const bounds = useBounds();
+  useLayoutEffect(() => {
+    bounds.refresh().fit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parts]);
+  return null;
 }
 
 function FramedParts({

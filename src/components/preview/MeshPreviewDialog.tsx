@@ -29,6 +29,18 @@ type GeometryState =
 
 export function MeshPreviewDialog({ open, onOpenChange, item, dbPath }: MeshPreviewDialogProps) {
   const [geometry, setGeometry] = useState<GeometryState>({ status: "loading" });
+  // The most recent successfully-decoded geometry, kept around independent of
+  // `geometry`'s current status. Switching LOD (or reloading for any reason)
+  // used to fully unmount <MeshPreview> while status was briefly "loading",
+  // tearing down and recreating the WebGL canvas every time - and
+  // react-three-fiber only releases a canvas's WebGL context 500ms after
+  // unmount (see its unmountComponentAtNode), so switching LODs a few times
+  // in a row could pile up more live contexts than the browser/webview
+  // allows, silently failing to create a new one (a blank preview) or
+  // rendering a context mid-loss (a garbled frame) - exactly what got
+  // reported. Keeping one <MeshPreview> mounted and just swapping its
+  // `parts` prop avoids the churn entirely.
+  const [lastReadyParts, setLastReadyParts] = useState<MeshPart[] | null>(null);
   const [textureDataUrl, setTextureDataUrl] = useState<string | null>(null);
   const [availableLods, setAvailableLods] = useState<DecodedLodInfo[]>([]);
   const [selectedLod, setSelectedLod] = useState<string | null>(null);
@@ -44,6 +56,7 @@ export function MeshPreviewDialog({ open, onOpenChange, item, dbPath }: MeshPrev
     setSelectedLod(null);
     setBoneCount(0);
     setShowBoneWeights(false);
+    setLastReadyParts(null);
 
     async function loadSideData() {
       if (item.mesh) {
@@ -90,6 +103,7 @@ export function MeshPreviewDialog({ open, onOpenChange, item, dbPath }: MeshPrev
         }
         if (!cancelled) {
           setGeometry({ status: "ready", parts: result.parts });
+          setLastReadyParts(result.parts);
           if (result.lodUsed && !selectedLod) setSelectedLod(result.lodUsed);
         }
       } catch (err) {
@@ -149,27 +163,40 @@ export function MeshPreviewDialog({ open, onOpenChange, item, dbPath }: MeshPrev
           )}
         </div>
 
-        <div className="h-[420px] overflow-hidden rounded-md border border-border bg-secondary/30">
+        <div className="relative h-[420px] overflow-hidden rounded-md border border-border bg-secondary/30">
+          {/* Kept mounted across LOD switches / reloads once we have a first
+              successful decode - see the lastReadyParts comment above for why. */}
+          {lastReadyParts && (
+            <MeshPreview parts={lastReadyParts} textureDataUrl={textureDataUrl} showBoneWeights={showBoneWeights} />
+          )}
           {geometry.status === "loading" && (
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+            <div
+              className={cn(
+                "absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground",
+                lastReadyParts && "bg-background/70 backdrop-blur-sm",
+              )}
+            >
               <Loader2 className="h-5 w-5 animate-spin" />
               Decoding mesh and texture…
             </div>
           )}
-          {geometry.status === "error" && (
-            <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm text-destructive">
+          {geometry.status === "error" && !lastReadyParts && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-6 text-center text-sm text-destructive">
               <AlertTriangle className="h-5 w-5" />
               {geometry.message}
             </div>
           )}
-          {geometry.status === "ready" && (
-            <MeshPreview parts={geometry.parts} textureDataUrl={textureDataUrl} showBoneWeights={showBoneWeights} />
+          {geometry.status === "error" && lastReadyParts && (
+            <div className="absolute inset-x-0 bottom-0 flex items-center gap-2 bg-destructive/90 p-2 text-xs text-destructive-foreground">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              {geometry.message}
+            </div>
           )}
         </div>
 
-        {geometry.status === "ready" && (
+        {lastReadyParts && (
           <div className="flex flex-wrap gap-1.5">
-            {geometry.parts.map((p, i) => (
+            {lastReadyParts.map((p, i) => (
               <Badge key={i} variant="outline">
                 {p.shaderName} · {p.vertexCount}v / {p.indexCount / 3}t
               </Badge>
