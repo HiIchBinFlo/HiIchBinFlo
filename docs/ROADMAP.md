@@ -38,51 +38,111 @@ project brief). This document is the source of truth for "is X actually done."
 
 ## Phase 2 — Deep Parsers, Validation Hardening
 
-**Status: Not started.** Phase 1's `.meta`/`.xml` handling is intentionally
-schema-agnostic (see [FILE_FORMATS.md](FILE_FORMATS.md)) rather than guessing at
-undocumented GTA V meta schemas. Phase 2 is where that gets replaced with
-verified, schema-aware mapping — e.g. turning `shop_ped_component.meta` entries
-into first-class editable fields instead of opaque metadata — plus a real `.ydd`/
-`.ytd` binary reader (see below) once a verified spec or adapted open-source
-reference (with compatible license) is integrated.
+**Status: Complete** (with one documented, deliberate scope boundary — see below).
+
+- [x] **RSC7 container codec, native Rust** (`src-tauri/src/parsers/rage_resource.rs`):
+      header parsing, the flags→buffer-size bit-packing formula, raw-DEFLATE
+      decompression, virtual/physical buffer reconstruction. No guessing: the
+      formula and the "raw DEFLATE, not zlib" detail were empirically verified
+      against a real RSC7 file (see the fixture test below), not taken on faith
+      from documentation.
+- [x] **`codewalker-bridge` sidecar** (`sidecar/CodeWalkerBridge/`): a small,
+      self-contained .NET 8 executable wrapping the real `CodeWalker.Core`
+      library to decode the actual `.ydd`/`.ytd` *object graph* — the part
+      that needs precise pointer resolution this project chose not to guess
+      at from scratch (see "Why a sidecar" below). Bundled as a Tauri
+      sidecar; end users never install or interact with CodeWalker directly.
+      Empirically confirmed to run correctly on Linux (not just its intended
+      Windows target) — see `sidecar/README.md`.
+- [x] Real `.ytd` decoding: texture name, width, height, depth, mip levels,
+      pixel format, byte-accurate `.dds` extraction (`DDSIO.GetDDSFile`, no
+      GDI+/`System.Drawing` dependency, so it stays cross-platform-safe).
+- [x] Real `.ydd` decoding: per-drawable bounding box/sphere, LOD
+      presence + distances, full bone list (name/index/parent), aggregate
+      geometry/vertex/triangle counts, embedded texture dictionary detection.
+      A file that fails to decode here is a genuinely corrupt/invalid RAGE
+      resource — real structural validation, not a heuristic.
+- [x] Wired into the Inspector as an on-demand "Decode" action per item
+      (`src/components/layout/DecodedInfoPanel.tsx`) and a sidecar health
+      check in the status bar — **deliberately not** a mandatory blocking
+      step during import (see "Why decoding is on-demand" below).
+- [x] A committed, empirically-verified test fixture
+      (`src-tauri/tests/fixtures/sample.ytd`) generated and self-verified by
+      the sidecar itself, cross-validating the Rust container reader against
+      real CodeWalker.Core-produced bytes — see `docs/FILE_FORMATS.md` for
+      why this exists (no Rockstar-produced sample files are available or
+      distributable in this repo).
+- [ ] Schema-aware mapping of specific FiveM `.meta` schemas (e.g.
+      `shop_ped_component.meta`) onto structured, editable fields is still
+      the schema-agnostic generic-XML approach from Phase 1 — deferred, not
+      forgotten; see `docs/FILE_FORMATS.md`.
+
+### Why a sidecar instead of a from-scratch Rust decoder
+
+The RSC7 *container* format (above) is well-documented and self-contained
+enough to implement and verify natively. The *object graph* inside it
+(Drawable geometry, TextureDictionary entries) needs a precise
+pointer-resolution scheme this project could not fully verify from available
+documentation, and there were no real Rockstar-produced sample files to test
+a guess against. Rather than ship a parser that looks plausible but might
+silently corrupt data on real files, this project integrates the real,
+actively-used `CodeWalker.Core` library (MIT-majority licensed; see
+`sidecar/NOTICE.md` for the full picture) via a bundled sidecar process —
+matching the project brief's own guidance to integrate existing open-source
+libraries, under their licenses, rather than reimplement blind.
+
+### Why decoding is on-demand, not automatic on import
+
+Each decode is a subprocess invocation. That's fine for "the user clicked an
+item and wants to see its real dimensions/bounding box," but running it
+automatically for every file during import would not stay smooth for the
+20,000+-file packs this project is explicitly designed to handle — so import
+stays fast (filename-convention classification, as in Phase 1) and decoding
+is an explicit, bounded, per-item action instead. A batched/background
+"deep-validate everything" pass is a reasonable Phase 5 (Optimization)
+addition once there's a performance budget to design it against.
 
 ## Phase 3 — Character Preview, Texture Viewer, Thumbnail Generator
 
 **Status: Not started.** `src/components/preview/` and `src/components/texture/`
-exist as empty directories reserved for this phase. Needs the Phase 2 `.ydd`/`.ytd`
-decoder before a 3D preview or texture viewer can render real content — a
-placeholder mannequin with no actual game assets would violate the "no
-placeholders for core functionality" rule, so this phase waits on Phase 2.
+exist as empty (documented) directories reserved for this phase. Phase 2 now
+provides real decoded texture data (dimensions/format + extracted `.dds`)
+and drawable structure (bounding box, LODs, bones, geometry counts) — enough
+to build a texture viewer and populate a 3D scene's metadata. What's still
+missing: actual vertex/index buffer extraction (geometry *content*, not just
+counts) for real mesh rendering, and DDS→canvas/WebGL texture decoding on the
+frontend. Both are scoped for this phase rather than Phase 2 (parsing) or
+faked with placeholder geometry.
 
 ## Phase 4 — Mesh Editor, Custom Clothing Creator
 
 **Status: Not started.** `src/components/mesh/` exists as an empty directory.
 The Custom Clothing Creator's *registration* half (assigning ids, generating
 metadata, integrating into a DLC) is already implemented in Phase 1 — creating
-a new item via the Inspector does exactly that. What's missing is content
-authoring (mesh inspection/editing), which depends on Phase 2/3.
+a new item via the Inspector does exactly that, and Phase 2 adds real
+structural validation of the files involved. What's missing is content
+authoring (mesh vertex/UV editing) and a write-back path through the sidecar
+(CodeWalker.Core can build valid resources — confirmed via `gen-test-ytd` —
+but no UI or write-back Tauri command exists yet), which depends on Phase 3's
+rendering pipeline to be useful.
 
 ## Phase 5 — Optimization, Testing, Release
 
-**Status: Not started.** Phase 1 ships with unit tests for the highest-risk
-logic (slot system, validation, db round-trip, parsers) on both sides of the
-IPC boundary, and a CI workflow (`.github/workflows/ci.yml`) that runs them.
-Broader integration/E2E tests, import/export performance profiling against real
-20k+ file packs, parallelized hashing, and packaged releases are Phase 5 work.
+**Status: Not started.** Phase 1 and 2 ship with unit tests for the
+highest-risk logic (slot system, validation, db round-trip, parsers, RSC7
+container codec) on both sides of the IPC boundary, plus a sidecar smoke test,
+and a CI workflow (`.github/workflows/ci.yml`) that runs all of it. Broader
+integration/E2E tests, import/export performance profiling against real
+20k+ file packs, parallelized hashing, a batched deep-validation pass (see
+Phase 2 above), and packaged releases are Phase 5 work.
 
 ---
 
-## Why `.ydd`/`.ytd` binary decoding isn't in Phase 1
+## Why full `.ydd`/`.ytd` *editing* still isn't done
 
-This is the single biggest technical gap, stated plainly: GTA V's `.ydd`
-(drawable) and `.ytd` (texture dictionary) are proprietary RAGE engine binary
-formats. Reading them well enough to render a mesh or preview a texture
-in-app requires either a verified format specification or an existing
-open-source implementation adapted under a compatible license (e.g. codebases
-in the CodeWalker/RAGE modding ecosystem) — not guessed-at parsing. Phase 1
-tracks these files as **opaque, hash-verified assets**: it never needs to
-understand their internals to guarantee the one invariant that matters most
-(drawable/texture ids never change), since that invariant lives entirely in
-the *filename* and the project's own id bookkeeping, not the binary content.
-Decoding them for real is Phase 2/3 work and will be integrated (with proper
-license attribution) rather than faked.
+Phase 2 closes the biggest Phase-1-era gap: real decoding now exists and is
+wired into the UI. What's still open is the *write* path for edited geometry
+(Phase 4) and rendering actual mesh content rather than metadata (Phase 3).
+Both build directly on Phase 2's sidecar rather than needing a new integration
+strategy — the hard architectural question (native Rust vs. wrapping a proven
+library) is answered and documented above.

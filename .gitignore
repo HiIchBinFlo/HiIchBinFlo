@@ -18,6 +18,14 @@ src-tauri/Cargo.lock.bak
 # Tauri generated
 src-tauri/gen/
 
+# Bundled sidecar binaries (built by scripts/publish-sidecar.mjs, see sidecar/README.md;
+# these are large self-contained .NET executables and must not be committed)
+src-tauri/binaries/
+
+# .NET sidecar build output
+sidecar/**/bin/
+sidecar/**/obj/
+
 # Editors
 .vscode/*
 !.vscode/extensions.json

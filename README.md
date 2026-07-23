@@ -4,11 +4,13 @@ A professional desktop editor for FiveM clothing resources — open existing clo
 packs, create and edit drawables/textures, and export server-ready resources,
 **without ever changing an existing drawable or texture ID.**
 
-Built with Tauri (Rust) + React + TypeScript + Zustand + SQLite.
+Built with Tauri (Rust) + React + TypeScript + Zustand + SQLite, plus a small
+bundled .NET sidecar (`sidecar/CodeWalkerBridge`) wrapping the real
+CodeWalker.Core library for genuine `.ydd`/`.ytd` decoding.
 
-> **Status: Phase 1 complete.** See [docs/ROADMAP.md](docs/ROADMAP.md) for what's
-> implemented today vs. planned, and [docs/FILE_FORMATS.md](docs/FILE_FORMATS.md)
-> for an honest breakdown of what is and isn't parsed at a binary level yet.
+> **Status: Phase 1 and 2 complete.** See [docs/ROADMAP.md](docs/ROADMAP.md) for
+> what's implemented today vs. planned, and [docs/FILE_FORMATS.md](docs/FILE_FORMATS.md)
+> for an honest breakdown of what is and isn't parsed at a binary level.
 
 ## Why this exists
 
@@ -27,38 +29,45 @@ to make editing those packs safe: **IDs are reserved slots, never renumbered.**
 | Desktop    | Tauri 2 (Rust)                                       |
 | State      | Zustand                                              |
 | Database   | SQLite (via `rusqlite`, one `.fcstudio` file per project) |
+| Binary decoding | `codewalker-bridge` (.NET 8, bundled sidecar) wrapping `CodeWalker.Core` — see `sidecar/README.md` |
 | 3D         | React Three Fiber / Three.js (Phase 3, not yet wired up) |
 
 ## Getting started
 
 ```bash
 npm install
-npm run tauri dev     # full desktop app
-# or, for UI-only iteration in a browser (file system features are disabled):
+npm run tauri dev     # full desktop app (also publishes the sidecar automatically)
+# or, for UI-only iteration in a browser (file system + decoding features are disabled):
 npm run dev
 ```
 
-### Linux prerequisites
+### Prerequisites
 
-Tauri needs the WebKitGTK stack to build on Linux:
-
-```bash
-sudo apt-get install libwebkit2gtk-4.1-dev libgtk-3-dev \
-  libayatana-appindicator3-dev librsvg2-dev libssl-dev libsoup-3.0-dev
-```
+- **Linux**: Tauri needs the WebKitGTK stack:
+  ```bash
+  sudo apt-get install libwebkit2gtk-4.1-dev libgtk-3-dev \
+    libayatana-appindicator3-dev librsvg2-dev libssl-dev libsoup-3.0-dev
+  ```
+- **All platforms**: the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+  is required to build the `codewalker-bridge` sidecar (`npm run tauri dev`/`build`
+  do this automatically via `npm run build:sidecar`; see `sidecar/README.md`).
 
 ### Scripts
 
 ```bash
-npm run typecheck   # tsc project references, no emit
-npm run lint         # eslint
-npm run test         # vitest (frontend unit tests)
-npm run build        # production frontend build
+npm run typecheck    # tsc project references, no emit
+npm run lint          # eslint
+npm run test          # vitest (frontend unit tests)
+npm run build         # production frontend build
+npm run build:sidecar # publish the codewalker-bridge sidecar for the current platform
 npm run tauri build   # full desktop installers (see src-tauri/)
 
 cd src-tauri
-cargo test           # backend unit tests (slot system, db, parsers, validation)
-cargo clippy          # backend lints
+cargo test            # backend unit tests (slot system, db, parsers, RSC7 codec, validation)
+cargo clippy           # backend lints
+
+cd sidecar/CodeWalkerBridge
+dotnet run -- probe    # sidecar health check
 ```
 
 ## Project layout
@@ -78,11 +87,16 @@ src/                    React frontend
 
 src-tauri/               Rust backend
   src/
-    commands/            Tauri commands: project, import, export, assets, validate
-    parsers/             filename.rs, fxmanifest.rs, meta_xml.rs
+    commands/            Tauri commands: project, import, export, assets, validate, inspect
+    parsers/             filename.rs, fxmanifest.rs, meta_xml.rs, rage_resource.rs (RSC7 codec)
+    sidecar.rs            Invokes the codewalker-bridge sidecar, parses its JSON output
     db.rs                 SQLite schema + CRUD for .fcstudio project files
     slot_system.rs         Authoritative Rust mirror of src/lib/slotSystem.ts
     models.rs              Domain model shared over the Tauri IPC boundary
+  tests/fixtures/sample.ytd   Real RSC7 fixture (see docs/FILE_FORMATS.md)
+
+sidecar/CodeWalkerBridge/    .NET 8 sidecar wrapping CodeWalker.Core for real .ydd/.ytd decoding
+scripts/publish-sidecar.mjs   Builds the sidecar for Tauri bundling
 ```
 
 ## The slot system, in one paragraph

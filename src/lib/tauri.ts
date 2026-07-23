@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   BinaryAssetRef,
   ClothingDrawable,
+  DecodedDrawableInfo,
+  DecodedTextureInfo,
   DlcInfo,
   ImportReport,
   ImportSourceType,
@@ -35,6 +37,24 @@ export interface ExportResult {
   issues: ValidationIssue[];
 }
 
+export interface SidecarProbeResult {
+  ok: boolean;
+  bridgeVersion: string;
+  codeWalkerCoreVersion: string;
+}
+
+export interface InspectYtdResult {
+  ok: boolean;
+  error: string | null;
+  textures: DecodedTextureInfo[] | null;
+}
+
+export interface InspectYddResult {
+  ok: boolean;
+  error: string | null;
+  drawables: DecodedDrawableInfo[] | null;
+}
+
 /** Thrown when a Tauri command is invoked outside of the desktop shell (e.g. `vite dev` in a browser). */
 export class TauriUnavailableError extends Error {
   constructor(command: string) {
@@ -48,6 +68,14 @@ export class TauriUnavailableError extends Error {
 
 function requireTauri(command: string) {
   if (!isTauri()) throw new TauriUnavailableError(command);
+}
+
+/**
+ * Absolute path to a project asset on disk, given its BinaryAssetRef.relativePath.
+ * Mirrors `assets_dir()` in src-tauri/src/commands/import.rs exactly — keep in sync.
+ */
+export function assetAbsolutePath(dbPath: string, relativePath: string): string {
+  return `${dbPath}.assets/${relativePath}`;
 }
 
 export const tauriApi = {
@@ -100,5 +128,23 @@ export const tauriApi = {
   async duplicateAssetFile(dbPath: string, relativePath: string): Promise<BinaryAssetRef> {
     requireTauri("duplicate_asset_file");
     return invoke<BinaryAssetRef>("duplicate_asset_file", { dbPath, relativePath });
+  },
+
+  /** Health check for the codewalker-bridge sidecar (real .ydd/.ytd decoding). */
+  async sidecarProbe(): Promise<SidecarProbeResult> {
+    requireTauri("sidecar_probe");
+    return invoke<SidecarProbeResult>("sidecar_probe");
+  },
+
+  /** Real, decoded texture info (dimensions/format/mips) + optional .dds extraction. Phase 2. */
+  async inspectYtd(path: string, extractDir?: string): Promise<InspectYtdResult> {
+    requireTauri("inspect_ytd");
+    return invoke<InspectYtdResult>("inspect_ytd", { path, extractDir: extractDir ?? null });
+  },
+
+  /** Real, decoded drawable structure (bounding box, LODs, bones, geometry stats). Phase 2. */
+  async inspectYdd(path: string): Promise<InspectYddResult> {
+    requireTauri("inspect_ydd");
+    return invoke<InspectYddResult>("inspect_ydd", { path });
   },
 };

@@ -2,7 +2,7 @@
 
 ## Process split
 
-Standard Tauri two-process model:
+Three processes as of Phase 2, not the standard Tauri two:
 
 - **Frontend (webview)**: React + TypeScript. Owns UI state (Zustand),
   optimistic edits, undo/redo, and a TypeScript mirror of the slot system for
@@ -12,7 +12,25 @@ Standard Tauri two-process model:
 - **Backend (Rust)**: owns the SQLite database, the filesystem, and is the
   *authoritative* copy of the slot system. Every import/export/save round-trip
   is validated here regardless of what the frontend already checked — the
-  backend does not trust the caller.
+  backend does not trust the caller. Also implements the RSC7 container
+  format natively (see below).
+- **`codewalker-bridge` sidecar (.NET)**: a bundled, self-contained process
+  the Rust backend shells out to (via `tauri-plugin-shell`'s sidecar
+  mechanism) for real `.ydd`/`.ytd` object-graph decoding. See "Why a
+  sidecar" in `docs/ROADMAP.md`'s Phase 2 section and `sidecar/README.md`.
+  End users never see or interact with this process directly — from their
+  perspective it's just part of the app.
+
+```
+┌─────────────┐   Tauri IPC    ┌──────────────┐   subprocess    ┌──────────────────┐
+│  Frontend    │ ─────────────▶│  Rust        │ ───────────────▶│ codewalker-bridge │
+│  (webview)   │◀───────────── │  backend     │◀─────────────── │ (.NET, sidecar)   │
+└─────────────┘   JSON results └──────────────┘   JSON on stdout└──────────────────┘
+                                       │
+                                       ▼
+                              SQLite (.fcstudio) +
+                              project assets directory
+```
 
 ## Where project data actually lives
 
@@ -48,9 +66,33 @@ save/export is checked against. Both are fully unit tested; see
 | `export_project` | Validate, then write a Resource/ZIP/DLC/Files export |
 | `import_asset_file` | Copy a user-picked file in (Inspector "Replace"/"Add file") |
 | `duplicate_asset_file` | Copy an existing project asset to a new deduplicated filename |
+| `sidecar_probe` | Health check: is `codewalker-bridge` present and working? |
+| `inspect_ytd` | Real texture decode (dimensions/format/mips) via the sidecar, optional `.dds` extraction |
+| `inspect_ydd` | Real drawable decode (bounding box, LODs, bones, geometry stats) via the sidecar |
 
 All commands return `Result<T, AppError>`; `AppError` serializes to a plain
 string the frontend surfaces via `sonner` toasts (`src/lib/tauri.ts`).
+
+## The sidecar: what Rust does vs. what the sidecar does
+
+Rust (`src-tauri/src/parsers/rage_resource.rs`) decodes the RSC7 *container*
+only — header, compression, buffer sizing — natively, with zero external
+process cost. It's used for fast "is this file even structurally intact"
+checks. `src-tauri/src/sidecar.rs` is the thin bridge: it resolves the
+bundled `codewalker-bridge` binary, spawns it with CLI args
+(`inspect-ytd <path>`, `inspect-ydd <path>`, ...), and deserializes its JSON
+stdout into the same Rust structs used everywhere else
+(`src-tauri/src/commands/inspect.rs`). Rust has no knowledge of the Drawable/
+TextureDictionary object graph itself — that logic lives entirely in
+`sidecar/CodeWalkerBridge/Commands.cs`, calling into the real
+`CodeWalker.Core` library. See `docs/FILE_FORMATS.md` and `docs/ROADMAP.md`
+(Phase 2) for the reasoning behind this split.
+
+The sidecar binary itself is built by `scripts/publish-sidecar.mjs`
+(self-contained `dotnet publish`, one per target platform) and is **not**
+committed to the repository (see `.gitignore`) — both local dev
+(`beforeDevCommand`/`beforeBuildCommand` in `tauri.conf.json`) and CI publish
+it fresh before any Tauri build.
 
 ## Validation
 
@@ -78,9 +120,17 @@ implementations for the same reason as the slot system above.
 
 - Rust: `cargo test` in `src-tauri/` — slot system, DB round-trip, filename
   parsing, `fxmanifest.lua` parse/generate round-trip, generic XML flattening,
-  validation logic. 23 tests as of Phase 1.
+  validation logic, and the RSC7 container codec (unit tests plus an
+  integration test cross-validated against a real, committed fixture file —
+  see `docs/FILE_FORMATS.md`). 27 unit + 4 integration tests as of Phase 2.
 - TypeScript: `npm run test` (Vitest) — slot system, mirroring the Rust suite's
   scenarios exactly (including the spec's own delete-id-2-of-5 example).
+- `codewalker-bridge`: no separate unit test project (it's a thin wrapper
+  around a well-tested external library); CI runs a smoke test exercising
+  every command, including verifying that feeding it the wrong resource type
+  fails gracefully (`ok:false`) instead of crashing.
 - CI (`.github/workflows/ci.yml`): typecheck + lint + test + build for the
-  frontend, `cargo check`/`clippy -D warnings`/`test` for the backend, and a
-  full Tauri release build, on every push/PR.
+  frontend; a sidecar build + smoke test job; `cargo check`/`clippy -D
+  warnings`/`test` for the backend (which requires the sidecar to be
+  published first — Tauri's build script validates `externalBin` paths even
+  for `cargo check`); and a full Tauri release build — on every push/PR.

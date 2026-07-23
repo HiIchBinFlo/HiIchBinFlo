@@ -20,6 +20,7 @@ import { useUiStore } from "@/stores/uiStore";
 import { PED_COMPONENTS, PED_PROPS, type BinaryAssetRef, type ClothingDrawable, type LodLevel } from "@/types/clothing";
 import { formatBytes } from "@/lib/utils";
 import { tauriApi, TauriUnavailableError } from "@/lib/tauri";
+import { DecodedInfoPanel } from "./DecodedInfoPanel";
 
 async function pickAndImportAsset(
   dbPath: string,
@@ -321,6 +322,8 @@ export function Inspector() {
           </div>
 
           <Separator />
+
+          {project && <DecodedInfoPanel item={item} dbPath={project.dbPath} />}
 
           <div>
             <Label className="mb-2 flex items-center gap-1">

@@ -142,6 +142,51 @@ export interface ValidationIssue {
   file?: string;
 }
 
+/**
+ * Real, decoded structural info from the codewalker-bridge sidecar (Phase 2)
+ * — as opposed to the opaque BinaryAssetRef tracking used everywhere else.
+ * See docs/FILE_FORMATS.md.
+ */
+export interface DecodedTextureInfo {
+  name: string;
+  width: number;
+  height: number;
+  depth: number;
+  levels: number;
+  format: string;
+  dataBytes: number;
+  extractedDds: string | null;
+}
+
+export interface DecodedBoneInfo {
+  name: string;
+  index: number;
+  parentIndex: number;
+}
+
+export interface DecodedLodInfo {
+  level: "high" | "med" | "low" | "vlow";
+  present: boolean;
+  distance: number;
+}
+
+export interface DecodedDrawableInfo {
+  name: string;
+  boundingBoxMin: [number, number, number];
+  boundingBoxMax: [number, number, number];
+  boundingCenter: [number, number, number];
+  boundingSphereRadius: number;
+  boneCount: number;
+  bones: DecodedBoneInfo[];
+  lods: DecodedLodInfo[];
+  totalModelCount: number;
+  totalGeometryCount: number;
+  totalVertexCount: number;
+  totalTriangleCount: number;
+  hasEmbeddedTextureDictionary: boolean;
+  embeddedTextureNames: string[];
+}
+
 export interface ProjectSettings {
   resourceName: string;
   framework: "standalone" | "esx" | "qbcore" | "qbox";

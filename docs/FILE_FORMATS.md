@@ -1,38 +1,64 @@
 # File Formats — What's Actually Implemented
 
-Honest, per-format breakdown of what FiveM Clothing Studio does today (Phase 1)
-vs. what's planned. No format below is faked or stubbed to look more complete
-than it is — where something isn't implemented, it's explicitly rejected/flagged
-rather than silently mishandled.
+Honest, per-format breakdown of what FiveM Clothing Studio does today
+(through Phase 2) vs. what's planned. No format below is faked or stubbed to
+look more complete than it is — where something isn't implemented, it's
+explicitly rejected/flagged rather than silently mishandled.
 
 ## `.ydd` (drawable mesh)
 
-**Phase 1: opaque, hash-verified asset.** GTA V's `.ydd` is a proprietary RAGE
-engine binary format (compressed resource container, embedded geometry, bones,
-LODs). Reading its internals — parsing geometry, letting you inspect/edit
-vertices, normals, UVs — is real reverse-engineering/format work that this
-project has not yet done and will not fake.
+**Two layers, two implementations, both real:**
 
-What Phase 1 *does* do, and does correctly: recognizes `.ydd` files by the
-standard naming convention (`<component>_<drawableId>_<r|u>.ydd`), copies them
-byte-for-byte into project storage, SHA-256 hashes them for integrity/duplicate
-detection, tracks presence on disk, and copies them byte-for-byte again on
-export. The file's *content* is never touched or reinterpreted — which is
-exactly why drawable ids (extracted from the filename, not the binary) are
-guaranteed stable across import/edit/export.
+1. **RSC7 container** (the outer compressed wrapper every `.ydd`/`.ytd` uses)
+   — decoded natively in Rust, `src-tauri/src/parsers/rage_resource.rs`.
+   Header parsing, the flags→buffer-size formula, and raw-DEFLATE
+   decompression, empirically verified against a real file (see below), not
+   guessed from documentation. Used for fast structural
+   integrity checks without needing the sidecar.
+2. **Object graph** (the actual Drawable: geometry, bones, LODs, bounding
+   volumes) — decoded via the `codewalker-bridge` sidecar
+   (`sidecar/CodeWalkerBridge/`), which wraps the real `CodeWalker.Core`
+   library. `inspect-ydd` returns, per drawable: name, bounding box/sphere,
+   which LODs are present and at what distance, the full bone list
+   (name/index/parent), aggregate model/geometry/vertex/triangle counts, and
+   whether an embedded texture dictionary is present. Wired into the
+   Inspector's on-demand "Decode" action.
 
-**Phase 2/3/4** will add real decoding — integrating or adapting an existing
-open-source RAGE-format reader (properly licensed and attributed) rather than
-reverse-engineering from scratch — to enable the mesh editor and 3D preview.
+Still not implemented: extracting actual vertex/index buffer *content*
+(positions, normals, UVs — needed to render a mesh, not just report its
+stats) and any write-back path for edited geometry. Both are Phase 3/4 scope
+(3D preview needs the former; the mesh editor needs both). See
+`docs/ROADMAP.md`.
+
+Every `.ydd` is still also copied byte-for-byte into project storage and
+SHA-256 hashed on import/export regardless of whether it's ever decoded —
+drawable ids come from the *filename*, not the binary content, so the
+never-renumber guarantee never depended on decoding working.
 
 ## `.ytd` (texture dictionary)
 
-**Phase 1: opaque, hash-verified asset,** same treatment as `.ydd` above.
-Recognized via `<component>_diff_<drawableId>_<textureId>_<suffix>_<race>.ytd`,
-copied/hashed/tracked, never decoded.
+Same two-layer treatment as `.ydd`. The sidecar's `inspect-ytd` returns, per
+texture: name, width, height, depth, mip level count, and pixel format
+(`D3DFMT_DXT1`/`DXT5`/`BC7`/...), and can extract each texture as a real,
+standard `.dds` file via `DDSIO.GetDDSFile` — a byte-accurate conversion with
+no `System.Drawing`/GDI+ dependency, so it stays cross-platform-safe (see
+`sidecar/README.md`'s platform notes).
 
-**Phase 3** adds real decoding for the texture viewer (DDS/PNG export,
-mipmap generation) — see `src/components/texture/README.md`.
+PNG/thumbnail conversion (for inline UI previews without a DDS-aware viewer)
+is deliberately not implemented yet — see Phase 3 in `docs/ROADMAP.md` for
+why, and the cross-platform tradeoff involved.
+
+### How the RSC7 formula was verified without Rockstar-produced sample files
+
+No real GTA V asset files are available in or distributable with this
+project. Instead, `sidecar/CodeWalkerBridge`'s `gen-test-ytd` command builds
+a small but genuinely valid `.ytd` **using CodeWalker.Core's own writer**,
+self-verifies it round-trips through CodeWalker.Core's own reader, and that
+exact file is committed as `src-tauri/tests/fixtures/sample.ytd`. The Rust
+RSC7 reader is tested against those real bytes
+(`src-tauri/tests/rage_resource_fixture_test.rs`) — this is empirical
+cross-validation against the authoritative reference implementation, not a
+self-consistency check against Rust's own assumptions.
 
 ## `.ymt` (binary metadata, e.g. ped component YMT)
 

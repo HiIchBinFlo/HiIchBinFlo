@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    CodeWalkerBridge is a small, standalone sidecar process. FiveM Clothing
+    Studio's Rust/Tauri backend shells out to it (as a bundled binary, via
+    Tauri's "sidecar" mechanism) to decode/encode the actual .ydd/.ytd RAGE
+    resource object graphs, using the real, proven CodeWalker.Core library
+    (MIT-licensed core; see NOTICE.md in this directory) instead of a
+    from-scratch reimplementation of undocumented pointer-resolution logic.
+
+    End users never install or open CodeWalker themselves - this binary is
+    published self-contained (includes its own .NET runtime) and shipped
+    alongside the app. See docs/FILE_FORMATS.md and sidecar/README.md.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>codewalker-bridge</AssemblyName>
+    <RootNamespace>CodeWalkerBridge</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CodeWalker.Core" Version="1.0.3" />
+  </ItemGroup>
+
+</Project>
