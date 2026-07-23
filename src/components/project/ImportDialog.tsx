@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { AlertCircle, CheckCircle2, FileArchive, FileStack, Files, FolderInput } from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle2, FileArchive, FileStack, Files, FolderInput } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -24,6 +24,11 @@ const SOURCES: Array<{ id: ImportSourceType; label: string; icon: typeof FolderI
   { id: "folder", label: "Plain Folder", icon: Files },
   { id: "files", label: "Individual Files", icon: FileStack },
 ];
+
+// Large packs can produce thousands of per-file warnings (e.g. every file
+// skipped for an unrecognized naming convention); render a bounded number
+// rather than thousands of DOM nodes in a non-virtualized list.
+const WARNINGS_SHOWN_LIMIT = 200;
 
 export function ImportDialog() {
   const open = useUiStore((s) => s.isImportDialogOpen);
@@ -132,6 +137,14 @@ export function ImportDialog() {
               <Stat label="Textures found" value={result.report.texturesFound} />
             </div>
 
+            {result.report.drawablesFound === 0 && result.report.warnings.length > 0 && (
+              <p className="flex items-start gap-1.5 rounded-md bg-warning/10 p-2 text-xs text-warning">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                No drawables were found — every scanned file was skipped, see the warnings below for why (usually a
+                filename that doesn't match a recognized naming convention).
+              </p>
+            )}
+
             {result.report.errors.length === 0 && result.report.missingFiles.length === 0 ? (
               <p className="flex items-center gap-1 text-sm text-success">
                 <CheckCircle2 className="h-4 w-4" /> No errors detected.
@@ -149,6 +162,24 @@ export function ImportDialog() {
                   </p>
                 ))}
               </ScrollArea>
+            )}
+
+            {result.report.warnings.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-warning">{result.report.warnings.length} warning(s)</p>
+                <ScrollArea className="h-40 rounded-md border border-border p-2">
+                  {result.report.warnings.slice(0, WARNINGS_SHOWN_LIMIT).map((w, i) => (
+                    <p key={i} className="flex items-center gap-1 text-xs text-warning">
+                      <AlertTriangle className="h-3 w-3 shrink-0" /> {w.file}: {w.message}
+                    </p>
+                  ))}
+                  {result.report.warnings.length > WARNINGS_SHOWN_LIMIT && (
+                    <p className="pt-1 text-xs text-muted-foreground">
+                      …and {result.report.warnings.length - WARNINGS_SHOWN_LIMIT} more.
+                    </p>
+                  )}
+                </ScrollArea>
+              </div>
             )}
 
             <DialogFooter>

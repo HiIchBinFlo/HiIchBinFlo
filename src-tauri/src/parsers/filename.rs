@@ -38,7 +38,23 @@ static TEXTURE_COMPONENT_RE: Lazy<Regex> =
 static TEXTURE_PROP_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)^p_([a-z]+)_diff_(\d{1,3})_(\d{1,3})_[a-z]_[a-z]+\.ytd$").unwrap());
 
+/// Some FiveM addon-ped/clothing packs prefix every streamed filename with
+/// `<target-ped>_<resource-name>^` to guarantee uniqueness across resources
+/// (RAGE's streaming filesystem requires globally-unique names across every
+/// loaded resource) — e.g.
+/// `mp_m_freemode_01_mp_m_creativyx_male^decl_000_u.ydd`. The actual
+/// component/id/variant convention this project understands lives after the
+/// *last* `^`, so strip that prefix (if present) before matching — a
+/// filename with no `^` is returned unchanged.
+fn strip_stream_prefix(file_name: &str) -> &str {
+    match file_name.rfind('^') {
+        Some(idx) => &file_name[idx + 1..],
+        None => file_name,
+    }
+}
+
 pub fn parse_mesh_filename(file_name: &str) -> Option<ParsedMeshFilename> {
+    let file_name = strip_stream_prefix(file_name);
     if let Some(caps) = MESH_PROP_RE.captures(file_name) {
         return Some(ParsedMeshFilename {
             component_key: caps[1].to_lowercase(),
@@ -57,6 +73,7 @@ pub fn parse_mesh_filename(file_name: &str) -> Option<ParsedMeshFilename> {
 }
 
 pub fn parse_texture_filename(file_name: &str) -> Option<ParsedTextureFilename> {
+    let file_name = strip_stream_prefix(file_name);
     if let Some(caps) = TEXTURE_PROP_RE.captures(file_name) {
         return Some(ParsedTextureFilename {
             component_key: caps[1].to_lowercase(),
@@ -175,6 +192,35 @@ mod tests {
     fn rejects_non_conforming_filenames() {
         assert!(parse_mesh_filename("random_model.ydd").is_none());
         assert!(parse_texture_filename("random_texture.ytd").is_none());
+    }
+
+    #[test]
+    fn parses_mesh_filenames_prefixed_with_a_streaming_uniqueness_tag() {
+        // Real filename from an addon-ped pack: everything before the last
+        // `^` is a uniqueness prefix some resources add so the RAGE
+        // streaming filesystem never sees a name collision across resources.
+        let parsed = parse_mesh_filename("mp_m_freemode_01_mp_m_creativyx_male^decl_000_u.ydd").unwrap();
+        assert_eq!(parsed.component_key, "decl");
+        assert!(!parsed.is_prop);
+        assert_eq!(parsed.drawable_id, 0);
+    }
+
+    #[test]
+    fn parses_texture_filenames_prefixed_with_a_streaming_uniqueness_tag() {
+        let parsed =
+            parse_texture_filename("mp_m_freemode_01_mp_m_creativyx_male^decl_diff_000_000_a_uni.ytd").unwrap();
+        assert_eq!(parsed.component_key, "decl");
+        assert!(!parsed.is_prop);
+        assert_eq!(parsed.drawable_id, 0);
+        assert_eq!(parsed.texture_id, 0);
+    }
+
+    #[test]
+    fn parses_prefixed_prop_filenames_too() {
+        let parsed = parse_mesh_filename("some_resource_prefix^p_head_003_u.ydd").unwrap();
+        assert_eq!(parsed.component_key, "head");
+        assert!(parsed.is_prop);
+        assert_eq!(parsed.drawable_id, 3);
     }
 
     #[test]
