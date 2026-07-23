@@ -241,4 +241,21 @@ export const tauriApi = {
     requireTauri("deep_validate_project");
     return invoke<DeepValidationReport>("deep_validate_project", { dbPath, items });
   },
+
+  /**
+   * Design Studio (Phase 6): writes an edited image (recolored, uploaded, or
+   * hand-painted) back onto a named texture inside a real .ytd — verified
+   * before anything is written to disk (same shape as repairYtd/repairYdd).
+   * `editedPngBase64` is the full edited image as a base64 PNG; it does not
+   * need to match the original texture's pixel dimensions.
+   */
+  async applyTextureEdit(
+    inputPath: string,
+    textureName: string,
+    editedPngBase64: string,
+    outputPath: string,
+  ): Promise<RepairResult> {
+    requireTauri("apply_texture_edit");
+    return invoke<RepairResult>("apply_texture_edit", { inputPath, textureName, editedPngBase64, outputPath });
+  },
 };

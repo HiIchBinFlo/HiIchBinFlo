@@ -76,6 +76,7 @@ save/export is checked against. Both are fully unit tested; see
 | `repair_ytd` / `repair_ydd` | Write-back proof: re-serialize a real file through CodeWalker.Core, verified before writing |
 | `refresh_asset_ref` | Recomputes an asset's size/hash after `repair_*` changes its bytes in place |
 | `deep_validate_project` | Phase 5: opt-in batched decode of every present mesh/texture in the project (bounded concurrency), vs. the on-demand per-item decode above |
+| `apply_texture_edit` | Phase 6: writes an edited image (Design Studio: recolor/upload/paint) onto a real texture inside a `.ytd`, verified before writing |
 
 All commands return `Result<T, AppError>`; `AppError` serializes to a plain
 string the frontend surfaces via `sonner` toasts (`src/lib/tauri.ts`).
@@ -110,10 +111,16 @@ then write to disk. A failure at any step returns `ok:false` with no file
 written — the on-disk file is never left in a partially-written or
 unverified state.
 
-Every write-back command sits on top of this. The write-back proof will only
-"apply an edit" once something *mutates* the loaded object graph between
-steps 1 and 2 — deliberately not built yet (see `docs/ROADMAP.md`'s Phase 4
-"Why raw vertex editing is out of scope").
+Every write-back command sits on top of this. Phase 6's `replace-texture`
+(`Commands.cs::ReplaceTexture`) is the first command that actually mutates
+the loaded object graph between steps 1 and 2 — it finds the target texture
+in `TextureDict.Textures.data_items`, replaces it with one built from a real
+DDS via `DDSIO.GetTexture` (preserving the original's Name/NameHash/Usage so
+nothing else that references it by name breaks), then follows the same
+verify-before-write steps as above, checking both the texture count *and*
+the replaced texture's new dimensions before writing. See `docs/ROADMAP.md`'s
+Phase 6 section and `docs/FILE_FORMATS.md` for the full picture, including
+the native Rust DDS encoder (`texture_encode.rs`) that feeds it.
 
 The sidecar binary itself is built by `scripts/publish-sidecar.mjs`
 (self-contained `dotnet publish`, one per target platform) and is **not**
@@ -179,17 +186,28 @@ implementations for the same reason as the slot system above.
   (unit tests plus integration tests cross-validated against real, committed
   fixture files — see `docs/FILE_FORMATS.md`), plus (Phase 5) end-to-end
   import and import→export integration tests and a large-synthetic-pack
-  scale test. 32 unit + 15 integration tests as of Phase 5
-  (`repair_ytd`/`repair_ydd`/`refresh_asset_ref`/`deep_validate_project` are
-  thin passthroughs to the sidecar with no independent Rust-side logic to
-  unit test — their correctness is the sidecar smoke test below).
+  scale test, plus (Phase 6) `texture_encode`'s real round-trip test (Rust
+  encode → real sidecar decode, exact pixel match — see below). 34 unit + 15
+  integration tests as of Phase 6
+  (`repair_ytd`/`repair_ydd`/`refresh_asset_ref`/`deep_validate_project`/
+  `apply_texture_edit` are thin passthroughs to the sidecar with no
+  independent Rust-side logic to unit test — their correctness is the
+  sidecar smoke test below).
 - TypeScript: `npm run test` (Vitest) — slot system, mirroring the Rust suite's
-  scenarios exactly (including the spec's own delete-id-2-of-5 example).
+  scenarios exactly (including the spec's own delete-id-2-of-5 example). The
+  Design Studio's canvas-based pixel math (`src/components/design/
+  canvasUtils.ts`) isn't unit tested — jsdom has no real `<canvas>` 2D
+  context without the native `canvas` npm package, which this project
+  doesn't depend on — so it's covered by real usage instead (typecheck +
+  build) and by the fact that the actual pixel data it produces is proven
+  correct end to end on the Rust/sidecar side.
 - `codewalker-bridge`: no separate unit test project (it's a thin wrapper
   around a well-tested external library); CI runs a smoke test exercising
   every command, including the write-back path (`repair-ytd` round-tripped
-  and re-inspected) and verifying that feeding a command the wrong resource
-  type fails gracefully (`ok:false`) instead of crashing.
+  and re-inspected), `replace-texture` (a real DDS swapped into a real
+  `.ytd`, re-inspected to confirm the new dimensions took effect), and
+  verifying that feeding a command the wrong resource type fails gracefully
+  (`ok:false`) instead of crashing.
 - CI (`.github/workflows/ci.yml`): typecheck + lint + test + build for the
   frontend; a sidecar build + smoke test job; `cargo check`/`clippy -D
   warnings`/`test` for the backend (which requires the sidecar to be

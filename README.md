@@ -8,8 +8,11 @@ Built with Tauri (Rust) + React + TypeScript + Zustand + SQLite, plus a small
 bundled .NET sidecar (`sidecar/CodeWalkerBridge`) wrapping the real
 CodeWalker.Core library for genuine `.ydd`/`.ytd` decoding.
 
-> **Status: Phases 1-5 complete**, except packaged installers (deliberately
-> not built — see `docs/ROADMAP.md`'s Phase 5). See
+> **Status: Phases 1-6 complete**, except packaged installers (deliberately
+> not built — see `docs/ROADMAP.md`'s Phase 5). Phase 6 added a **Design
+> Studio**: take an existing item's texture as a template and recolor it,
+> replace it with an uploaded image, or hand-paint it, then write the result
+> for real into the `.ytd` — see `docs/ROADMAP.md`'s Phase 6. See
 > [docs/ROADMAP.md](docs/ROADMAP.md) for what's implemented today vs. planned
 > (including two documented corrections to earlier versions of that
 > document — one in Phase 4, one a real bug Phase 5's scale test caught),
@@ -86,18 +89,20 @@ src/                    React frontend
     project/             New/Open project, Import, Export dialogs
     dialogs/             Validation dialog
     preview/             Isolated 3D mesh preview (React Three Fiber, lazy-loaded): LOD switch, bone viz
-    texture/             Real decoded Texture Viewer (image + export)
-    mesh/                Intentionally empty — see its README (raw vertex editing is out of scope)
+    texture/             Real decoded Texture Viewer (image + export), entry point to Design Studio
+    design/              Design Studio (Phase 6): recolor / upload-image / paint, all writing real texture content
+    mesh/                Intentionally empty — see its README (raw vertex/mesh editing is out of scope)
   stores/                Zustand stores: project state + undo/redo, UI state
   lib/                   slotSystem.ts (the core ID-safety algorithm), validation.ts, tauri.ts
   types/                 Shared domain model
 
 src-tauri/               Rust backend
   src/
-    commands/            Tauri commands: project, import, export, assets, validate, inspect, preview, repair, deep_validate
+    commands/            Tauri commands: project, import, export, assets, validate, inspect, preview, repair, deep_validate, texture_edit
     parsers/             filename.rs, fxmanifest.rs, meta_xml.rs, rage_resource.rs (RSC7 codec)
     sidecar.rs            Invokes the codewalker-bridge sidecar, parses its JSON output
     texture_decode.rs      BC1-7 DDS decode -> PNG/thumbnail, native Rust
+    texture_encode.rs      RGBA -> real DDS encode (Design Studio's write side), native Rust
     db.rs                 SQLite schema + CRUD for .fcstudio project files
     slot_system.rs         Authoritative Rust mirror of src/lib/slotSystem.ts
     models.rs              Domain model shared over the Tauri IPC boundary

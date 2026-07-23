@@ -304,17 +304,74 @@ not built — see below.**
       tauri build` remains the documented way to produce one when that's
       wanted; nothing about Phase 5's other work changes how it behaves.
 
+## Phase 6 — Design Studio (texture content editing)
+
+**Status: Complete.** Requested directly: take an existing item as a
+template and change its *design* (not its shape) without leaving the app.
+This is the first feature in the project that actually writes new *content*
+into a `.ytd` — not just re-serializing what CodeWalker.Core already read
+(Phase 4's `repair-ytd`/`repair-ydd`), but replacing a named texture's real
+pixel data.
+
+- [x] **`replace-texture` sidecar command**
+      (`sidecar/CodeWalkerBridge/Commands.cs::ReplaceTexture`): loads a real
+      `.ytd`, finds the named texture, builds its replacement via
+      `DDSIO.GetTexture(byte[])` — the same DDS-to-Texture path
+      CodeWalker's own texture-import feature uses, not a reimplementation —
+      preserves the original's `Name`/`NameHash`/`Usage`/`UsageFlags` so
+      nothing else that references it by name breaks, and follows the same
+      verify-before-write shape as `RepairYtd`/`RepairYdd`: re-serialize,
+      reload, confirm the texture count and the replaced texture's new
+      dimensions are actually present, only then write to disk.
+- [x] **Native Rust DDS encoder** (`src-tauri/src/texture_encode.rs`): the
+      write-side counterpart to Phase 3's `texture_decode.rs`. Encodes
+      edited RGBA8 pixels into a valid, real DDS file
+      (`D3DFMT_A8R8G8B8`, uncompressed) via the `ddsfile` crate — the same
+      crate Phase 3 already uses to *read* DDS headers. Deliberately not
+      re-compressed into BC1/3/7: this project has a BC *decoder*
+      (`texture2ddecoder`) but no BC *encoder*, and guessing at one risked
+      shipping artifacted or broken textures. The honest tradeoff is a
+      larger in-game texture than a hand-tuned BC7 export — correct pixels
+      over an unverified compressor. Empirically verified end to end, not
+      just self-consistency: a Rust-encoded DDS round-tripped through the
+      *real* sidecar (`replace-texture` → `inspect-ytd --extract-dir`) and
+      the extracted result decoded back to the exact original pixels via
+      Rust's own decoder — see the CI sidecar smoke test and
+      `texture_encode::tests::round_trips_through_the_real_decoder`.
+- [x] **`apply_texture_edit` Tauri command**
+      (`src-tauri/src/commands/texture_edit.rs`): the glue — decodes the
+      frontend's edited PNG, encodes it to DDS, writes it to a temp file,
+      shells out to `replace-texture`, cleans up. Returns the same
+      `RepairResult` shape `repair_ytd`/`repair_ydd` already use.
+- [x] **Design Studio dialog** (`src/components/design/`), opened via a new
+      "Design Studio" button in the Texture Viewer, three tabs sharing one
+      write path:
+  - **Recolor**: luminance-preserving tint (`canvasUtils.ts::recolor`) —
+    replaces the texture's hue with a chosen color while keeping its
+    existing shading/highlights, blendable by an intensity slider. The
+    standard game-modding "recolor" technique, not a flat color fill.
+  - **Upload Image**: pick any image file, fit it into the texture's
+    original dimensions (cover/contain/stretch), preview, apply.
+  - **Paint**: a real hand-painting canvas — brush color/size/opacity,
+    eyedropper, undo/redo — pre-loaded with the item's current texture as
+    the starting point.
+- [ ] **Mesh/shape editing** — still explicitly out of scope; Design Studio
+      only ever changes pixels, never geometry. See Phase 4's "Why raw
+      vertex editing is out of scope," which this doesn't revisit.
+
 ---
 
-## Why full `.ydd`/`.ytd` *content editing* still isn't done
+## Why full `.ydd` *mesh* content editing still isn't done (texture content editing is — see Phase 6)
 
 Phase 2 added real decoding; Phase 3 added real viewing (mesh + texture,
 isolated from a base character by deliberate scope decision); Phase 4 proved
 the write-back path works (`repair-ytd`/`repair-ydd`, verified against a real
 fixture) and delivered the editing operations that actually fit this
-project's purpose (LOD switching, item creation, bone visibility). What
-remains — interactive vertex/UV *content* editing — was scoped out
-deliberately (see Phase 4 above), not left unbuilt for lack of a path: the
-hard architectural question (native Rust vs. wrapping a proven library) was
+project's purpose (LOD switching, item creation, bone visibility). Phase 6
+went further and actually shipped texture *content* editing (Design Studio)
+on top of that proven write-back path. What remains — interactive vertex/UV
+*mesh* editing — was scoped out deliberately (see Phase 4 above), not left
+unbuilt for lack of a path: the hard architectural question (native Rust vs.
+wrapping a proven library) was
 answered once, in Phase 2, and the write-back proof in Phase 4 confirms that
 decision extends cleanly to writing, too.

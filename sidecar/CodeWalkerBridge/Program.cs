@@ -11,7 +11,7 @@ try
 {
     if (args.Length == 0)
     {
-        WriteError("No command given. Usage: codewalker-bridge <probe|inspect-ytd|inspect-ydd|export-geometry|repair-ytd|repair-ydd|gen-test-ytd> [args...]");
+        WriteError("No command given. Usage: codewalker-bridge <probe|inspect-ytd|inspect-ydd|export-geometry|repair-ytd|repair-ydd|replace-texture|gen-test-ytd> [args...]");
         return 1;
     }
 
@@ -27,6 +27,12 @@ try
         ),
         "repair-ytd" => Commands.RepairYtd(RequireArg(args, 1, "inputPath"), RequireArg(args, 2, "outputPath")),
         "repair-ydd" => Commands.RepairYdd(RequireArg(args, 1, "inputPath"), RequireArg(args, 2, "outputPath")),
+        "replace-texture" => Commands.ReplaceTexture(
+            RequireArg(args, 1, "ytdPath"),
+            RequireArg(args, 2, "textureName"),
+            RequireArg(args, 3, "ddsPath"),
+            RequireArg(args, 4, "outputPath")
+        ),
         "gen-test-ytd" => Commands.GenTestYtd(RequireArg(args, 1, "outputPath")),
         _ => throw new ArgumentException($"Unknown command \"{args[0]}\"."),
     };

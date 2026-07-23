@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, AlertTriangle, Download } from "lucide-react";
+import { Loader2, AlertTriangle, Download, Palette } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,12 +11,17 @@ import {
 import { Button } from "@/components/ui/button";
 import { tauriApi, TauriUnavailableError } from "@/lib/tauri";
 import { formatBytes } from "@/lib/utils";
+import { DesignStudioDialog } from "@/components/design/DesignStudioDialog";
 import type { DecodedTextureInfo } from "@/types/clothing";
 
 interface TextureViewerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   texture: DecodedTextureInfo;
+  /** Absolute path to the .ytd this texture lives in — required for the "Design Studio" write-back action. */
+  ytdPath?: string;
+  /** Called after a Design Studio edit is successfully written, so the caller can re-decode. */
+  onEdited?: () => void;
 }
 
 /**
@@ -24,9 +29,10 @@ interface TextureViewerProps {
  * from the .dds the sidecar already extracted, via pure-Rust BC1-7 decoding
  * (src-tauri/src/texture_decode.rs) — not a placeholder icon.
  */
-export function TextureViewer({ open, onOpenChange, texture }: TextureViewerProps) {
+export function TextureViewer({ open, onOpenChange, texture, ytdPath, onEdited }: TextureViewerProps) {
   const [pngDataUrl, setPngDataUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [designStudioOpen, setDesignStudioOpen] = useState(false);
 
   useEffect(() => {
     if (!open || !texture.extractedDds) return;
@@ -111,11 +117,28 @@ export function TextureViewer({ open, onOpenChange, texture }: TextureViewerProp
           <Button variant="outline" onClick={() => handleExport("dds")} disabled={!texture.extractedDds}>
             <Download className="h-3.5 w-3.5" /> Export .dds
           </Button>
-          <Button onClick={() => handleExport("png")} disabled={!texture.extractedDds}>
+          <Button variant="outline" onClick={() => handleExport("png")} disabled={!texture.extractedDds}>
             <Download className="h-3.5 w-3.5" /> Export .png
+          </Button>
+          <Button
+            onClick={() => setDesignStudioOpen(true)}
+            disabled={!texture.extractedDds || !ytdPath}
+            title={!ytdPath ? "Unknown source .ytd for this texture" : undefined}
+          >
+            <Palette className="h-3.5 w-3.5" /> Design Studio
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {ytdPath && (
+        <DesignStudioDialog
+          open={designStudioOpen}
+          onOpenChange={setDesignStudioOpen}
+          texture={texture}
+          ytdPath={ytdPath}
+          onApplied={onEdited}
+        />
+      )}
     </Dialog>
   );
 }

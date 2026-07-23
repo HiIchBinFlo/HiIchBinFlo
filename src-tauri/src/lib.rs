@@ -7,6 +7,7 @@ pub mod parsers;
 pub mod sidecar;
 pub mod slot_system;
 pub mod texture_decode;
+pub mod texture_encode;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -43,6 +44,7 @@ pub fn run() {
             commands::repair::repair_ydd,
             commands::repair::refresh_asset_ref,
             commands::deep_validate::deep_validate_project,
+            commands::texture_edit::apply_texture_edit,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

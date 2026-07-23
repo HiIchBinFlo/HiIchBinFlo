@@ -75,9 +75,27 @@ Same layered treatment as `.ydd`, now including real pixel decoding:
    images). Cross-validated against a real BC1 `.dds` extracted by the
    sidecar (`src-tauri/tests/fixtures/sample_bc1.dds`), not just
    hand-crafted test data — see `texture_decode_fixture_test.rs`.
+3. **Write-back: real pixel content editing** (Phase 6, "Design Studio",
+   `src/components/design/`): recolor, replace with an uploaded image, or
+   hand-paint a texture, then write the result for real into the `.ytd`.
+   The edited image is encoded to a real DDS in Rust
+   (`src-tauri/src/texture_encode.rs`, `D3DFMT_A8R8G8B8` uncompressed — this
+   project has a BC decoder but not a BC encoder, so output isn't
+   recompressed into BC1/3/7; the honest tradeoff is a larger file over an
+   unverified compressor), then the sidecar's `replace-texture`
+   (`Commands.cs::ReplaceTexture`) loads the real `.ytd`, swaps that
+   texture's data via `DDSIO.GetTexture` (CodeWalker's own DDS-import path),
+   and verifies the re-serialized output before writing — same
+   verify-before-write shape as `repair-ytd`/`repair-ydd`. Empirically
+   proven end to end, not just self-consistency: a Rust-encoded DDS was
+   written through the real sidecar, extracted back out, and decoded again,
+   with pixels matching the original exactly (CI's sidecar smoke test, plus
+   `texture_encode::tests::round_trips_through_the_real_decoder`).
 
 Mip levels beyond 0 aren't decoded/selectable yet (a natural viewer
-enhancement, not implemented).
+enhancement, not implemented). Mesh/shape editing remains out of scope —
+Design Studio only ever changes texture pixels, never geometry (see
+`docs/ROADMAP.md`'s Phase 4 "Why raw vertex editing is out of scope").
 
 ### How the RSC7 formula was verified without Rockstar-produced sample files
 

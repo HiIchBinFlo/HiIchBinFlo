@@ -435,6 +435,125 @@ public static class Commands
     }
 
     /// <summary>
+    /// Phase 6: replaces one named texture's pixel data inside a real .ytd
+    /// with a new image, loaded through <see cref="RpfFile.GetResourceFile{T}"/>
+    /// like <see cref="RepairYtd"/> so the rest of the object graph
+    /// (skeleton/shader-group references elsewhere in the pack, other
+    /// textures in the same dictionary) stays exactly as CodeWalker.Core
+    /// itself wired it. <paramref name="ddsPath"/> is expected to be a
+    /// plain, valid DDS file (the Rust side builds one via
+    /// texture_encode.rs's uncompressed-A8R8G8B8 writer from a user-edited
+    /// image) - <see cref="DDSIO.GetTexture"/> is the same DDS-to-Texture
+    /// path CodeWalker's own texture-import feature uses, so this isn't
+    /// reimplementing anything CodeWalker.Core doesn't already do for real
+    /// DDS files. The original texture's Name/NameHash/Usage/UsageFlags are
+    /// preserved so nothing else that references this texture by name
+    /// breaks - only the pixel content, dimensions, and format actually
+    /// change. Same verify-before-write shape as RepairYtd/RepairYdd.
+    /// </summary>
+    public static RepairResult ReplaceTexture(string ytdPath, string textureName, string ddsPath, string outputPath)
+    {
+        if (!File.Exists(ytdPath))
+        {
+            return new RepairResult(false, $"File not found: {ytdPath}", null, 0, 0);
+        }
+        if (!File.Exists(ddsPath))
+        {
+            return new RepairResult(false, $"DDS file not found: {ddsPath}", null, 0, 0);
+        }
+
+        byte[] inputBytes = File.ReadAllBytes(ytdPath);
+        YtdFile ytd;
+        try
+        {
+            ytd = RpfFile.GetResourceFile<YtdFile>(inputBytes);
+        }
+        catch (Exception ex)
+        {
+            return new RepairResult(false, $"Not a valid .ytd resource: {ex.Message}", null, inputBytes.Length, 0);
+        }
+
+        var items = ytd.TextureDict?.Textures?.data_items;
+        if (items == null)
+        {
+            return new RepairResult(false, "This .ytd has no texture dictionary.", null, inputBytes.Length, 0);
+        }
+
+        var index = Array.FindIndex(items, t => string.Equals(t.Name, textureName, StringComparison.OrdinalIgnoreCase));
+        if (index < 0)
+        {
+            return new RepairResult(false, $"Texture \"{textureName}\" not found in this .ytd.", null, inputBytes.Length, 0);
+        }
+
+        Texture replacement;
+        try
+        {
+            replacement = DDSIO.GetTexture(File.ReadAllBytes(ddsPath));
+        }
+        catch (Exception ex)
+        {
+            return new RepairResult(false, $"Failed to build a texture from the provided DDS: {ex.Message}", null, inputBytes.Length, 0);
+        }
+
+        var original = items[index];
+        replacement.Name = original.Name;
+        replacement.NameHash = original.NameHash;
+        replacement.Usage = original.Usage;
+        replacement.UsageFlags = original.UsageFlags;
+        items[index] = replacement;
+
+        byte[] outputBytes;
+        try
+        {
+            outputBytes = ytd.Save();
+        }
+        catch (Exception ex)
+        {
+            return new RepairResult(false, $"Failed to re-serialize: {ex.Message}", null, inputBytes.Length, 0);
+        }
+
+        // Verify before writing: the output must reload, still contain every
+        // texture (none dropped), and the replaced one must carry the new
+        // dimensions - not just "some texture with this name exists".
+        YtdFile reloaded;
+        try
+        {
+            reloaded = RpfFile.GetResourceFile<YtdFile>(outputBytes);
+        }
+        catch (Exception ex)
+        {
+            return new RepairResult(false, $"Re-serialized output failed to reload: {ex.Message}", null, inputBytes.Length, 0);
+        }
+
+        var reloadedItems = reloaded.TextureDict?.Textures?.data_items ?? Array.Empty<Texture>();
+        if (reloadedItems.Length != items.Length)
+        {
+            return new RepairResult(
+                false,
+                $"Re-serialized output has {reloadedItems.Length} textures, expected {items.Length}. Refusing to write.",
+                null,
+                inputBytes.Length,
+                0
+            );
+        }
+
+        var reloadedTex = Array.Find(reloadedItems, t => string.Equals(t.Name, textureName, StringComparison.OrdinalIgnoreCase));
+        if (reloadedTex == null || reloadedTex.Width != replacement.Width || reloadedTex.Height != replacement.Height)
+        {
+            return new RepairResult(
+                false,
+                "Re-serialized output did not contain the replaced texture with matching dimensions. Refusing to write.",
+                null,
+                inputBytes.Length,
+                0
+            );
+        }
+
+        File.WriteAllBytes(outputPath, outputBytes);
+        return new RepairResult(true, null, outputPath, inputBytes.Length, outputBytes.Length);
+    }
+
+    /// <summary>
     /// Dev/test utility: builds a small but real, valid .ytd resource from
     /// scratch (round-tripped through the actual CodeWalker.Core reader on
     /// the way out) - used to generate committed test fixtures for the

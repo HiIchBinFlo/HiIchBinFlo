@@ -16,3 +16,9 @@ scope" note in `docs/ROADMAP.md`'s Phase 4 section for the reasoning. The
 write-back path this would need is proven and ready
 (`sidecar/CodeWalkerBridge/Commands.cs::RepairYtd`/`RepairYdd`) if that scope
 decision is ever revisited.
+
+This scope boundary is specifically about *mesh geometry* — the shape never
+changes. *Texture* content editing (recolor, replace with an uploaded image,
+hand-paint) is a separate, much lower-risk kind of edit (2D pixels, not 3D
+topology) and does exist: see `src/components/design/` (Phase 6, "Design
+Studio").

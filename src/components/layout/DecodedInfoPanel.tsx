@@ -24,6 +24,8 @@ export function DecodedInfoPanel({ item, dbPath }: { item: ClothingDrawable; dbP
   const [meshInfo, setMeshInfo] = useState<DecodedDrawableInfo[] | null>(null);
   const [meshError, setMeshError] = useState<string | null>(null);
   const [textureInfo, setTextureInfo] = useState<DecodedTextureInfo[] | null>(null);
+  /** Maps a decoded texture's name to the absolute .ytd path it came from — Design Studio's write target. */
+  const [textureYtdPaths, setTextureYtdPaths] = useState<Record<string, string>>({});
   const [textureErrors, setTextureErrors] = useState<string[]>([]);
   const [attempted, setAttempted] = useState(false);
   const [viewingTexture, setViewingTexture] = useState<DecodedTextureInfo | null>(null);
@@ -46,15 +48,21 @@ export function DecodedInfoPanel({ item, dbPath }: { item: ClothingDrawable; dbP
 
       const textureFiles = item.textures.filter((t) => t.file).map((t) => t.file!);
       const decodedTextures: DecodedTextureInfo[] = [];
+      const ytdPaths: Record<string, string> = {};
       const errors: string[] = [];
       const extractDir = previewCacheDir(dbPath);
       for (const file of textureFiles) {
         const texPath = assetAbsolutePath(dbPath, file.relativePath);
         const res = await tauriApi.inspectYtd(texPath, extractDir);
-        if (res.ok && res.textures) decodedTextures.push(...res.textures);
-        else errors.push(`${file.fileName}: ${res.error ?? "Unknown decode error"}`);
+        if (res.ok && res.textures) {
+          decodedTextures.push(...res.textures);
+          for (const t of res.textures) ytdPaths[t.name] = texPath;
+        } else {
+          errors.push(`${file.fileName}: ${res.error ?? "Unknown decode error"}`);
+        }
       }
       setTextureInfo(decodedTextures);
+      setTextureYtdPaths(ytdPaths);
       setTextureErrors(errors);
 
       // Opportunistically generate a card thumbnail from the first
@@ -165,6 +173,8 @@ export function DecodedInfoPanel({ item, dbPath }: { item: ClothingDrawable; dbP
           open={!!viewingTexture}
           onOpenChange={(open) => !open && setViewingTexture(null)}
           texture={viewingTexture}
+          ytdPath={textureYtdPaths[viewingTexture.name]}
+          onEdited={handleDecode}
         />
       )}
     </div>
