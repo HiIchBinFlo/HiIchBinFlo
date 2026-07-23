@@ -187,6 +187,16 @@ export interface DecodedDrawableInfo {
   embeddedTextureNames: string[];
 }
 
+export interface MeshPart {
+  shaderName: string;
+  vertexCount: number;
+  indexCount: number;
+  positions: number[];
+  normals: number[];
+  uv0: number[];
+  indices: number[];
+}
+
 export interface ProjectSettings {
   resourceName: string;
   framework: "standalone" | "esx" | "qbcore" | "qbox";

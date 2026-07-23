@@ -160,6 +160,116 @@ public static class Commands
     }
 
     /// <summary>
+    /// Extracts real vertex/index geometry (positions, normals, first UV
+    /// channel) for the isolated mesh preview (Phase 3). Picks the first
+    /// drawable in the file (or the one matching <paramref name="drawableName"/>
+    /// if given) and its highest available LOD.
+    ///
+    /// Uses VertexData.GetVector3/GetVector2 with CodeWalker.GameFiles.VertexSemantics
+    /// indices (Position=0, Normal=3, TexCoord0=6) rather than re-deriving the
+    /// per-VertexType byte packing ourselves - see docs/FILE_FORMATS.md for why:
+    /// this project could not empirically verify the packing scheme against a
+    /// real or synthetic fixture (constructing a valid VertexDeclaration by hand
+    /// failed - CodeWalker.Core only ever builds one by reading real file bytes),
+    /// so it calls the library's own accessors on real, file-loaded data instead
+    /// of reimplementing them. Absent semantics (e.g. no second UV channel)
+    /// read back as zero rather than throwing - confirmed empirically.
+    /// </summary>
+    public static ExportGeometryResult ExportGeometry(string path, string? drawableName)
+    {
+        if (!File.Exists(path))
+        {
+            return new ExportGeometryResult(false, $"File not found: {path}", null, null, null);
+        }
+
+        byte[] data = File.ReadAllBytes(path);
+        YddFile ydd;
+        try
+        {
+            ydd = RpfFile.GetResourceFile<YddFile>(data);
+        }
+        catch (Exception ex)
+        {
+            return new ExportGeometryResult(false, $"Not a valid .ydd resource: {ex.Message}", null, null, null);
+        }
+
+        var drawables = ydd.Drawables ?? Array.Empty<Drawable>();
+        var drawable = drawableName != null
+            ? Array.Find(drawables, d => d.Name == drawableName)
+            : drawables.Length > 0 ? drawables[0] : null;
+
+        if (drawable == null)
+        {
+            return new ExportGeometryResult(false, "No matching drawable found in this .ydd.", null, null, null);
+        }
+
+        var (models, lodUsed) = PickBestLod(drawable);
+        if (models == null || models.Length == 0)
+        {
+            return new ExportGeometryResult(false, $"Drawable \"{drawable.Name}\" has no geometry at any LOD.", drawable.Name, null, null);
+        }
+
+        var parts = new List<MeshPart>();
+        foreach (var model in models)
+        {
+            foreach (var geom in model.Geometries ?? Array.Empty<DrawableGeometry>())
+            {
+                var vertexData = geom.VertexData;
+                if (vertexData == null) continue;
+
+                int vertexCount = geom.VerticesCount;
+                var positions = new float[vertexCount * 3];
+                var normals = new float[vertexCount * 3];
+                var uv0 = new float[vertexCount * 2];
+
+                for (int v = 0; v < vertexCount; v++)
+                {
+                    var p = vertexData.GetVector3((int)VertexSemantics.Position, v);
+                    positions[v * 3 + 0] = p.X;
+                    positions[v * 3 + 1] = p.Y;
+                    positions[v * 3 + 2] = p.Z;
+
+                    var n = vertexData.GetVector3((int)VertexSemantics.Normal, v);
+                    normals[v * 3 + 0] = n.X;
+                    normals[v * 3 + 1] = n.Y;
+                    normals[v * 3 + 2] = n.Z;
+
+                    var uv = vertexData.GetVector2((int)VertexSemantics.TexCoord0, v);
+                    uv0[v * 2 + 0] = uv.X;
+                    uv0[v * 2 + 1] = uv.Y;
+                }
+
+                var indicesSource = geom.IndexBuffer?.Indices ?? Array.Empty<ushort>();
+                var indices = new int[indicesSource.Length];
+                for (int i = 0; i < indicesSource.Length; i++) indices[i] = indicesSource[i];
+
+                parts.Add(new MeshPart(
+                    geom.Shader?.Name.ToString() ?? "(unknown shader)",
+                    vertexCount,
+                    indices.Length,
+                    positions,
+                    normals,
+                    uv0,
+                    indices
+                ));
+            }
+        }
+
+        return new ExportGeometryResult(true, null, drawable.Name, lodUsed, parts);
+    }
+
+    private static (DrawableModel[]? models, string? lod) PickBestLod(Drawable d)
+    {
+        var block = d.DrawableModels;
+        if (block == null) return (null, null);
+        if (block.High is { Length: > 0 }) return (block.High, "high");
+        if (block.Med is { Length: > 0 }) return (block.Med, "med");
+        if (block.Low is { Length: > 0 }) return (block.Low, "low");
+        if (block.VLow is { Length: > 0 }) return (block.VLow, "vlow");
+        return (null, null);
+    }
+
+    /// <summary>
     /// Dev/test utility: builds a small but real, valid .ytd resource from
     /// scratch (round-tripped through the actual CodeWalker.Core reader on
     /// the way out) - used to generate committed test fixtures for the

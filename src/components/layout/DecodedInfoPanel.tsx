@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { ScanEye, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { ScanEye, AlertTriangle, CheckCircle2, ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { assetAbsolutePath, tauriApi, TauriUnavailableError } from "@/lib/tauri";
+import { assetAbsolutePath, previewCacheDir, tauriApi, TauriUnavailableError } from "@/lib/tauri";
 import type { ClothingDrawable, DecodedDrawableInfo, DecodedTextureInfo } from "@/types/clothing";
 import { formatBytes } from "@/lib/utils";
+import { TextureViewer } from "@/components/texture/TextureViewer";
+import { useProjectStore } from "@/stores/projectStore";
 
 /**
  * Real, decoded structural info for the selected item's mesh/textures, via
@@ -17,12 +19,14 @@ import { formatBytes } from "@/lib/utils";
  * of blocking a 20,000-file import (see docs/ARCHITECTURE.md).
  */
 export function DecodedInfoPanel({ item, dbPath }: { item: ClothingDrawable; dbPath: string }) {
+  const updateItem = useProjectStore((s) => s.updateItem);
   const [busy, setBusy] = useState(false);
   const [meshInfo, setMeshInfo] = useState<DecodedDrawableInfo[] | null>(null);
   const [meshError, setMeshError] = useState<string | null>(null);
   const [textureInfo, setTextureInfo] = useState<DecodedTextureInfo[] | null>(null);
   const [textureErrors, setTextureErrors] = useState<string[]>([]);
   const [attempted, setAttempted] = useState(false);
+  const [viewingTexture, setViewingTexture] = useState<DecodedTextureInfo | null>(null);
 
   async function handleDecode() {
     setBusy(true);
@@ -43,14 +47,28 @@ export function DecodedInfoPanel({ item, dbPath }: { item: ClothingDrawable; dbP
       const textureFiles = item.textures.filter((t) => t.file).map((t) => t.file!);
       const decodedTextures: DecodedTextureInfo[] = [];
       const errors: string[] = [];
+      const extractDir = previewCacheDir(dbPath);
       for (const file of textureFiles) {
         const texPath = assetAbsolutePath(dbPath, file.relativePath);
-        const res = await tauriApi.inspectYtd(texPath);
+        const res = await tauriApi.inspectYtd(texPath, extractDir);
         if (res.ok && res.textures) decodedTextures.push(...res.textures);
         else errors.push(`${file.fileName}: ${res.error ?? "Unknown decode error"}`);
       }
       setTextureInfo(decodedTextures);
       setTextureErrors(errors);
+
+      // Opportunistically generate a card thumbnail from the first
+      // successfully-extracted texture, if the item doesn't have one yet.
+      const firstWithDds = decodedTextures.find((t) => t.extractedDds);
+      if (!item.thumbnail && firstWithDds?.extractedDds) {
+        try {
+          const base64 = await tauriApi.decodeTextureThumbnail(firstWithDds.extractedDds);
+          updateItem(item.id, { thumbnail: `data:image/png;base64,${base64}` });
+        } catch {
+          // Thumbnail generation is a nice-to-have; a failure here shouldn't
+          // surface as an error for the decode action as a whole.
+        }
+      }
     } catch (err) {
       const message =
         err instanceof TauriUnavailableError
@@ -120,19 +138,35 @@ export function DecodedInfoPanel({ item, dbPath }: { item: ClothingDrawable; dbP
       {textureInfo && textureInfo.length > 0 && (
         <div className="space-y-1">
           {textureInfo.map((t, i) => (
-            <div key={i} className="flex items-center justify-between rounded-md border border-border p-2 text-[11px]">
-              <span className="truncate">{t.name}</span>
+            <button
+              key={i}
+              onClick={() => setViewingTexture(t)}
+              disabled={!t.extractedDds}
+              className="flex w-full items-center justify-between rounded-md border border-border p-2 text-[11px] hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <span className="flex items-center gap-1.5 truncate">
+                <ImageIcon className="h-3 w-3 shrink-0 text-muted-foreground" />
+                {t.name}
+              </span>
               <div className="flex shrink-0 items-center gap-1">
                 <Badge variant="outline">{t.width}×{t.height}</Badge>
                 <Badge variant="secondary">{t.format.replace("D3DFMT_", "")}</Badge>
                 <span className="text-muted-foreground">{formatBytes(t.dataBytes)}</span>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}
 
       {attempted && !busy && <Separator />}
+
+      {viewingTexture && (
+        <TextureViewer
+          open={!!viewingTexture}
+          onOpenChange={(open) => !open && setViewingTexture(null)}
+          texture={viewingTexture}
+        />
+      )}
     </div>
   );
 }

@@ -104,45 +104,119 @@ addition once there's a performance budget to design it against.
 
 ## Phase 3 — Character Preview, Texture Viewer, Thumbnail Generator
 
-**Status: Not started.** `src/components/preview/` and `src/components/texture/`
-exist as empty (documented) directories reserved for this phase. Phase 2 now
-provides real decoded texture data (dimensions/format + extracted `.dds`)
-and drawable structure (bounding box, LODs, bones, geometry counts) — enough
-to build a texture viewer and populate a 3D scene's metadata. What's still
-missing: actual vertex/index buffer extraction (geometry *content*, not just
-counts) for real mesh rendering, and DDS→canvas/WebGL texture decoding on the
-frontend. Both are scoped for this phase rather than Phase 2 (parsing) or
-faked with placeholder geometry.
+**Status: Complete, with one deliberate scope boundary decided up front — see below.**
+
+- [x] **Isolated 3D mesh preview** (`src/components/preview/MeshPreview.tsx`,
+      React Three Fiber): real decoded geometry — actual vertex positions,
+      normals (or computed from the triangles when a normal semantic is
+      absent), and UV0 — with the item's real decoded texture applied.
+      Orbit/zoom via `OrbitControls`, auto-framed via drei's `Bounds`.
+      Lazy-loaded (a dedicated `three` chunk, only fetched when a preview is
+      opened) so three.js's size doesn't cost anything for users who never
+      open it.
+- [x] **Real vertex/index extraction**, sidecar-side
+      (`sidecar/CodeWalkerBridge/Commands.cs::ExportGeometry`): positions,
+      normals, UV0 and triangle indices per geometry, using
+      `VertexData.GetVector3`/`GetVector2` with `VertexSemantics` indices —
+      i.e. calling CodeWalker.Core's own accessors on real, file-loaded data
+      rather than re-deriving the per-`VertexType` byte packing ourselves
+      (see "The one unverified piece" below — this is the one part of Phase 3
+      that could not be empirically cross-checked the way everything else in
+      this project has been).
+- [x] **Real texture decoding to pixels**, native Rust, no sidecar round-trip
+      needed (`src-tauri/src/texture_decode.rs`): DDS header parsing
+      (`ddsfile`) + BC1/BC2/BC3/BC4/BC5/BC7 block decompression
+      (`texture2ddecoder`) + uncompressed 32bpp formats, encoded to PNG
+      (`image`). Cross-validated against a real BC1 `.dds` extracted by the
+      sidecar from CodeWalker.Core's own writer
+      (`src-tauri/tests/fixtures/sample_bc1.dds` /
+      `texture_decode_fixture_test.rs`) — not just self-consistency tests.
+- [x] **Texture Viewer** (`src/components/texture/TextureViewer.tsx`): the
+      actual decoded image (not an icon), dimensions/format/mip-count/size,
+      "Export as .png" (re-encoded) and "Export as .dds" (verbatim original
+      bytes) — both via real Tauri commands, both tested.
+- [x] **Thumbnail generation**: a small (128px) downsampled PNG, decoded and
+      saved onto the item (`ClothingDrawable.thumbnail`) the first time its
+      textures are decoded, so the clothing grid shows a real preview image
+      instead of a generic icon — deliberately a separate, small-output
+      code path from the full-resolution Texture Viewer decode, to avoid
+      bloating the SQLite project file per item.
+- [ ] **HDRI (image-based) lighting** — the preview uses procedural
+      three-point studio lighting instead. See "Why not HDRI" below.
+- [ ] **Attaching clothing to a base character** — explicitly out of scope
+      for this phase by design decision, not an oversight. See below.
+
+### Why isolated mesh preview, not full character preview
+
+Rendering clothing *on* a character needs a base ped mesh (male/female
+Freemode), which is Rockstar game content this project cannot ship or
+generate. CodeWalker and OpenIV solve this by requiring the user to point
+the tool at their own GTA V installation and reading the base models (plus
+RPF archive decryption) from there. That's a real, larger feature — a
+deliberate scope decision (made explicitly, not assumed) was to ship the
+isolated item viewer now, real geometry and real texture, no game
+installation required, and treat "attach to a base character via a
+user-provided GTA V path" as a follow-up rather than blocking Phase 3 on it.
+
+### Why not HDRI
+
+Drei's `<Environment preset="...">` fetches HDR files from a CDN at request
+time by default — a network dependency this offline-first desktop app
+shouldn't silently acquire just for lighting. Bundling a licensed `.hdr`
+asset locally is the honest way to get real image-based lighting and remains
+a reasonable follow-up; procedural studio lighting (key + fill + rim lights)
+was used instead so "HDRI" isn't claimed without either owning the network
+dependency or bundling the asset.
+
+### The one unverified piece: vertex/normal/UV extraction
+
+Every other decoding path in this project (RSC7 container sizing, BC1-7
+texture decompression, the structural `.ydd`/`.ytd` metadata from Phase 2)
+was cross-checked against real bytes — either from a committed fixture or
+CodeWalker.Core's own reader. Vertex geometry extraction could not be:
+building a valid, hand-constructed `VertexDeclaration` to test
+`VertexData.GetVector3` against failed (CodeWalker.Core only ever builds one
+by reading real file bytes, with no public constructor path), and no real
+`.ydd` file was available to test the real read path against. The
+implementation calls CodeWalker.Core's own, presumably production-tested
+accessor methods (the same ones its actual 3D renderer relies on) rather
+than reimplementing the per-`VertexType` byte-packing scheme — a much lower
+risk than guessing a binary layout, but still short of this project's usual
+bar of empirical cross-validation. If mesh shapes ever look wrong against a
+real clothing pack, this is the first place to look — see
+`docs/FILE_FORMATS.md`.
 
 ## Phase 4 — Mesh Editor, Custom Clothing Creator
 
-**Status: Not started.** `src/components/mesh/` exists as an empty directory.
-The Custom Clothing Creator's *registration* half (assigning ids, generating
-metadata, integrating into a DLC) is already implemented in Phase 1 — creating
-a new item via the Inspector does exactly that, and Phase 2 adds real
-structural validation of the files involved. What's missing is content
-authoring (mesh vertex/UV editing) and a write-back path through the sidecar
-(CodeWalker.Core can build valid resources — confirmed via `gen-test-ytd` —
-but no UI or write-back Tauri command exists yet), which depends on Phase 3's
-rendering pipeline to be useful.
+**Status: Not started.** `src/components/mesh/` exists as an empty (documented)
+directory. The Custom Clothing Creator's *registration* half (assigning ids,
+generating metadata, integrating into a DLC) is already implemented in
+Phase 1 — creating a new item via the Inspector does exactly that — and
+Phase 2/3 add real structural validation and viewing of the files involved.
+What's missing is content *authoring* (mesh vertex/UV editing) and a
+write-back path through the sidecar (CodeWalker.Core can build valid
+resources — confirmed via `gen-test-ytd` — but no UI or write-back Tauri
+command exists yet for an *edited* geometry).
 
 ## Phase 5 — Optimization, Testing, Release
 
-**Status: Not started.** Phase 1 and 2 ship with unit tests for the
+**Status: Not started.** Phases 1-3 ship with unit/integration tests for the
 highest-risk logic (slot system, validation, db round-trip, parsers, RSC7
-container codec) on both sides of the IPC boundary, plus a sidecar smoke test,
-and a CI workflow (`.github/workflows/ci.yml`) that runs all of it. Broader
-integration/E2E tests, import/export performance profiling against real
-20k+ file packs, parallelized hashing, a batched deep-validation pass (see
-Phase 2 above), and packaged releases are Phase 5 work.
+container codec, BC1-7 texture decode) on both sides of the IPC boundary,
+plus a sidecar smoke test, and a CI workflow (`.github/workflows/ci.yml`)
+that runs all of it. Broader integration/E2E tests, import/export
+performance profiling against real 20k+ file packs, parallelized hashing, a
+batched deep-validation pass (see Phase 2 above), bundling a real HDRI asset
+(see Phase 3 above), and packaged releases are Phase 5 work.
 
 ---
 
 ## Why full `.ydd`/`.ytd` *editing* still isn't done
 
-Phase 2 closes the biggest Phase-1-era gap: real decoding now exists and is
-wired into the UI. What's still open is the *write* path for edited geometry
-(Phase 4) and rendering actual mesh content rather than metadata (Phase 3).
-Both build directly on Phase 2's sidecar rather than needing a new integration
-strategy — the hard architectural question (native Rust vs. wrapping a proven
-library) is answered and documented above.
+Phase 2 added real decoding; Phase 3 added real viewing (mesh + texture,
+isolated from a base character by deliberate scope decision — see above).
+What's still open is the *write* path for edited geometry — Phase 4 — which
+builds directly on the same sidecar rather than needing a new integration
+strategy. The hard architectural question (native Rust vs. wrapping a proven
+library) was answered once, in Phase 2, and every phase since has built on
+that same decision.

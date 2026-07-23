@@ -69,6 +69,10 @@ save/export is checked against. Both are fully unit tested; see
 | `sidecar_probe` | Health check: is `codewalker-bridge` present and working? |
 | `inspect_ytd` | Real texture decode (dimensions/format/mips) via the sidecar, optional `.dds` extraction |
 | `inspect_ydd` | Real drawable decode (bounding box, LODs, bones, geometry stats) via the sidecar |
+| `export_geometry` | Real vertex/index geometry for the isolated mesh preview, via the sidecar |
+| `decode_texture_png` | Decodes an extracted `.dds` to a base64 PNG (native Rust, `texture_decode.rs`) |
+| `decode_texture_thumbnail` | Same, downsampled — used for `ClothingDrawable.thumbnail` |
+| `export_texture_png` / `copy_file` | Texture Viewer's "Export as PNG" (re-encode) / "Export as DDS" (verbatim copy) |
 
 All commands return `Result<T, AppError>`; `AppError` serializes to a plain
 string the frontend surfaces via `sonner` toasts (`src/lib/tauri.ts`).
@@ -116,13 +120,24 @@ implementations for the same reason as the slot system above.
   (e.g. with `rayon`) is tracked as Phase 5 work rather than premature
   optimization in Phase 1.
 
+## Performance posture (Phase 3 additions)
+
+- The 3D preview and its `three`/`@react-three/fiber`/`@react-three/drei`
+  dependencies are lazy-loaded (`React.lazy` + a dedicated Vite
+  `manualChunks` bundle) — opening the app never pays for three.js; only
+  opening a preview does.
+- Texture thumbnails are generated once per item (cached onto
+  `ClothingDrawable.thumbnail`) and downsampled before storage, not
+  regenerated on every render and not stored at full resolution.
+
 ## Testing
 
 - Rust: `cargo test` in `src-tauri/` — slot system, DB round-trip, filename
   parsing, `fxmanifest.lua` parse/generate round-trip, generic XML flattening,
-  validation logic, and the RSC7 container codec (unit tests plus an
-  integration test cross-validated against a real, committed fixture file —
-  see `docs/FILE_FORMATS.md`). 27 unit + 4 integration tests as of Phase 2.
+  validation logic, the RSC7 container codec, and BC1-7 texture decoding
+  (unit tests plus integration tests cross-validated against real, committed
+  fixture files — see `docs/FILE_FORMATS.md`). 31 unit + 6 integration tests
+  as of Phase 3.
 - TypeScript: `npm run test` (Vitest) — slot system, mirroring the Rust suite's
   scenarios exactly (including the spec's own delete-id-2-of-5 example).
 - `codewalker-bridge`: no separate unit test project (it's a thin wrapper

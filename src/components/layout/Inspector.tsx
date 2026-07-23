@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Copy, Trash2, FileUp, FileX, Hash } from "lucide-react";
+import { Copy, Trash2, FileUp, FileX, Hash, Box } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -21,6 +21,12 @@ import { PED_COMPONENTS, PED_PROPS, type BinaryAssetRef, type ClothingDrawable, 
 import { formatBytes } from "@/lib/utils";
 import { tauriApi, TauriUnavailableError } from "@/lib/tauri";
 import { DecodedInfoPanel } from "./DecodedInfoPanel";
+
+// Lazy-loaded: three.js is a large dependency that only users who actually
+// open a 3D preview should pay the cost of downloading/parsing.
+const MeshPreviewDialog = lazy(() =>
+  import("@/components/preview/MeshPreviewDialog").then((m) => ({ default: m.MeshPreviewDialog })),
+);
 
 async function pickAndImportAsset(
   dbPath: string,
@@ -50,6 +56,7 @@ export function Inspector() {
   const selectedIds = useUiStore((s) => s.selectedIds);
   const clearSelection = useUiStore((s) => s.clearSelection);
   const select = useUiStore((s) => s.select);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const selected = useMemo(
     () => items.filter((i) => selectedIds.has(i.id)),
@@ -139,6 +146,11 @@ export function Inspector() {
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <h2 className="text-sm font-semibold">Inspector</h2>
         <div className="flex gap-1">
+          {project && item.mesh && (
+            <Button variant="ghost" size="icon" title="3D Preview" onClick={() => setPreviewOpen(true)}>
+              <Box className="h-3.5 w-3.5" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -358,6 +370,17 @@ export function Inspector() {
           </div>
         </div>
       </ScrollArea>
+
+      {project && previewOpen && (
+        <Suspense fallback={null}>
+          <MeshPreviewDialog
+            open={previewOpen}
+            onOpenChange={setPreviewOpen}
+            item={item}
+            dbPath={project.dbPath}
+          />
+        </Suspense>
+      )}
     </aside>
   );
 }

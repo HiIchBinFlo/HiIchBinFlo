@@ -37,6 +37,15 @@ export default defineConfig({
     target: process.env.TAURI_ENV_PLATFORM === "windows" ? "chrome105" : "safari13",
     minify: !process.env.TAURI_ENV_DEBUG ? "esbuild" : false,
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
+    rollupOptions: {
+      output: {
+        // three.js + drei/fiber are large and only needed once a user opens
+        // the (lazy-loaded) 3D preview - keep them out of the main chunk.
+        manualChunks: {
+          three: ["three", "@react-three/fiber", "@react-three/drei"],
+        },
+      },
+    },
   },
   test: {
     environment: "jsdom",

@@ -8,7 +8,7 @@ Built with Tauri (Rust) + React + TypeScript + Zustand + SQLite, plus a small
 bundled .NET sidecar (`sidecar/CodeWalkerBridge`) wrapping the real
 CodeWalker.Core library for genuine `.ydd`/`.ytd` decoding.
 
-> **Status: Phase 1 and 2 complete.** See [docs/ROADMAP.md](docs/ROADMAP.md) for
+> **Status: Phases 1-3 complete.** See [docs/ROADMAP.md](docs/ROADMAP.md) for
 > what's implemented today vs. planned, and [docs/FILE_FORMATS.md](docs/FILE_FORMATS.md)
 > for an honest breakdown of what is and isn't parsed at a binary level.
 
@@ -30,7 +30,8 @@ to make editing those packs safe: **IDs are reserved slots, never renumbered.**
 | State      | Zustand                                              |
 | Database   | SQLite (via `rusqlite`, one `.fcstudio` file per project) |
 | Binary decoding | `codewalker-bridge` (.NET 8, bundled sidecar) wrapping `CodeWalker.Core` — see `sidecar/README.md` |
-| 3D         | React Three Fiber / Three.js (Phase 3, not yet wired up) |
+| Texture decode  | Native Rust: `ddsfile` + `texture2ddecoder` (BC1-7) + `image` (PNG) — `src-tauri/src/texture_decode.rs` |
+| 3D         | React Three Fiber / Three.js / drei — isolated mesh preview, lazy-loaded |
 
 ## Getting started
 
@@ -76,24 +77,27 @@ dotnet run -- probe    # sidecar health check
 src/                    React frontend
   components/
     ui/                 Radix-based primitives (button, dialog, select, ...)
-    layout/              Toolbar, Sidebar, Inspector, MainLayout, StatusBar
+    layout/              Toolbar, Sidebar, Inspector, MainLayout, StatusBar, DecodedInfoPanel
     clothing/            Virtualized grid/list views for the clothing collection
     project/             New/Open project, Import, Export dialogs
     dialogs/             Validation dialog
-    texture/, mesh/, preview/   Phase 3/4 placeholders (empty on purpose — see ROADMAP)
+    preview/             Isolated 3D mesh preview (React Three Fiber, lazy-loaded)
+    texture/             Real decoded Texture Viewer (image + export)
+    mesh/                Reserved for Phase 4 (mesh editing) — see its README
   stores/                Zustand stores: project state + undo/redo, UI state
   lib/                   slotSystem.ts (the core ID-safety algorithm), validation.ts, tauri.ts
   types/                 Shared domain model
 
 src-tauri/               Rust backend
   src/
-    commands/            Tauri commands: project, import, export, assets, validate, inspect
+    commands/            Tauri commands: project, import, export, assets, validate, inspect, preview
     parsers/             filename.rs, fxmanifest.rs, meta_xml.rs, rage_resource.rs (RSC7 codec)
     sidecar.rs            Invokes the codewalker-bridge sidecar, parses its JSON output
+    texture_decode.rs      BC1-7 DDS decode -> PNG/thumbnail, native Rust
     db.rs                 SQLite schema + CRUD for .fcstudio project files
     slot_system.rs         Authoritative Rust mirror of src/lib/slotSystem.ts
     models.rs              Domain model shared over the Tauri IPC boundary
-  tests/fixtures/sample.ytd   Real RSC7 fixture (see docs/FILE_FORMATS.md)
+  tests/fixtures/              Real RSC7 (sample.ytd) and BC1 DDS (sample_bc1.dds) fixtures
 
 sidecar/CodeWalkerBridge/    .NET 8 sidecar wrapping CodeWalker.Core for real .ydd/.ytd decoding
 scripts/publish-sidecar.mjs   Builds the sidecar for Tauri bundling

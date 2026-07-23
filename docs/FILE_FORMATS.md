@@ -1,7 +1,7 @@
 # File Formats — What's Actually Implemented
 
 Honest, per-format breakdown of what FiveM Clothing Studio does today
-(through Phase 2) vs. what's planned. No format below is faked or stubbed to
+(through Phase 3) vs. what's planned. No format below is faked or stubbed to
 look more complete than it is — where something isn't implemented, it's
 explicitly rejected/flagged rather than silently mishandled.
 
@@ -23,12 +23,22 @@ explicitly rejected/flagged rather than silently mishandled.
    (name/index/parent), aggregate model/geometry/vertex/triangle counts, and
    whether an embedded texture dictionary is present. Wired into the
    Inspector's on-demand "Decode" action.
+3. **Vertex/index geometry content** (Phase 3) — `export-geometry` returns
+   real positions, normals, UV0 and triangle indices per geometry, powering
+   the isolated mesh preview (`src/components/preview/MeshPreview.tsx`). This
+   is the **one piece of this project's decoding that could not be
+   empirically cross-validated** the way everything else was (no real `.ydd`
+   file to test the read path against, and hand-constructing a valid
+   `VertexDeclaration` to test in isolation turned out to be infeasible —
+   CodeWalker.Core only ever builds one from real file bytes). The
+   implementation calls CodeWalker.Core's own `VertexData.GetVector3`/
+   `GetVector2` accessors (the same ones its production 3D renderer uses)
+   with `VertexSemantics` indices rather than re-deriving the binary packing
+   itself — see `docs/ROADMAP.md`'s Phase 3 section for the full reasoning
+   and what to check first if a real pack ever renders with a visibly wrong
+   mesh shape.
 
-Still not implemented: extracting actual vertex/index buffer *content*
-(positions, normals, UVs — needed to render a mesh, not just report its
-stats) and any write-back path for edited geometry. Both are Phase 3/4 scope
-(3D preview needs the former; the mesh editor needs both). See
-`docs/ROADMAP.md`.
+Still not implemented: any write-back path for edited geometry (Phase 4).
 
 Every `.ydd` is still also copied byte-for-byte into project storage and
 SHA-256 hashed on import/export regardless of whether it's ever decoded —
@@ -37,16 +47,28 @@ never-renumber guarantee never depended on decoding working.
 
 ## `.ytd` (texture dictionary)
 
-Same two-layer treatment as `.ydd`. The sidecar's `inspect-ytd` returns, per
-texture: name, width, height, depth, mip level count, and pixel format
-(`D3DFMT_DXT1`/`DXT5`/`BC7`/...), and can extract each texture as a real,
-standard `.dds` file via `DDSIO.GetDDSFile` — a byte-accurate conversion with
-no `System.Drawing`/GDI+ dependency, so it stays cross-platform-safe (see
-`sidecar/README.md`'s platform notes).
+Same layered treatment as `.ydd`, now including real pixel decoding:
 
-PNG/thumbnail conversion (for inline UI previews without a DDS-aware viewer)
-is deliberately not implemented yet — see Phase 3 in `docs/ROADMAP.md` for
-why, and the cross-platform tradeoff involved.
+1. **Structural decode** (Phase 2) via the sidecar's `inspect-ytd`: name,
+   width, height, depth, mip level count, pixel format
+   (`D3DFMT_DXT1`/`DXT5`/`BC7`/...), and byte-accurate `.dds` extraction via
+   `DDSIO.GetDDSFile` — no `System.Drawing`/GDI+ dependency, so it stays
+   cross-platform-safe (see `sidecar/README.md`'s platform notes).
+2. **Real pixel decoding to a viewable image** (Phase 3), entirely in Rust,
+   no sidecar round-trip needed once the `.dds` is on disk
+   (`src-tauri/src/texture_decode.rs`): DDS header parsing (`ddsfile`) +
+   BC1/BC2/BC3/BC4/BC5/BC7 block decompression (`texture2ddecoder`, MIT OR
+   Apache-2.0) + uncompressed 32bpp formats, encoded to PNG (`image`).
+   Powers the Texture Viewer (`src/components/texture/TextureViewer.tsx`,
+   real image + export-as-PNG/export-as-DDS) and card thumbnails
+   (`ClothingDrawable.thumbnail`, a small downsampled PNG generated once per
+   item so the SQLite project file doesn't balloon with full-resolution
+   images). Cross-validated against a real BC1 `.dds` extracted by the
+   sidecar (`src-tauri/tests/fixtures/sample_bc1.dds`), not just
+   hand-crafted test data — see `texture_decode_fixture_test.rs`.
+
+Mip levels beyond 0 aren't decoded/selectable yet (a natural viewer
+enhancement, not implemented).
 
 ### How the RSC7 formula was verified without Rockstar-produced sample files
 

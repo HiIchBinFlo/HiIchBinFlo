@@ -7,6 +7,7 @@ import type {
   DlcInfo,
   ImportReport,
   ImportSourceType,
+  MeshPart,
   Project,
   ProjectSettings,
   ValidationIssue,
@@ -55,6 +56,14 @@ export interface InspectYddResult {
   drawables: DecodedDrawableInfo[] | null;
 }
 
+export interface ExportGeometryResult {
+  ok: boolean;
+  error: string | null;
+  drawableName: string | null;
+  lodUsed: string | null;
+  parts: MeshPart[] | null;
+}
+
 /** Thrown when a Tauri command is invoked outside of the desktop shell (e.g. `vite dev` in a browser). */
 export class TauriUnavailableError extends Error {
   constructor(command: string) {
@@ -76,6 +85,11 @@ function requireTauri(command: string) {
  */
 export function assetAbsolutePath(dbPath: string, relativePath: string): string {
   return `${dbPath}.assets/${relativePath}`;
+}
+
+/** Cache directory for extracted .dds files used by the mesh/texture preview (Phase 3). */
+export function previewCacheDir(dbPath: string): string {
+  return `${dbPath}.assets/.preview-cache`;
 }
 
 export const tauriApi = {
@@ -146,5 +160,35 @@ export const tauriApi = {
   async inspectYdd(path: string): Promise<InspectYddResult> {
     requireTauri("inspect_ydd");
     return invoke<InspectYddResult>("inspect_ydd", { path });
+  },
+
+  /** Real vertex/index geometry (positions/normals/uv0) for the isolated mesh preview. Phase 3. */
+  async exportGeometry(path: string, drawable?: string): Promise<ExportGeometryResult> {
+    requireTauri("export_geometry");
+    return invoke<ExportGeometryResult>("export_geometry", { path, drawable: drawable ?? null });
+  },
+
+  /** Decodes an already-extracted .dds file to a base64 PNG (pure Rust, no sidecar). Phase 3. */
+  async decodeTexturePng(path: string): Promise<string> {
+    requireTauri("decode_texture_png");
+    return invoke<string>("decode_texture_png", { path });
+  },
+
+  /** Small downsampled base64 PNG thumbnail for the clothing grid's cards. Phase 3. */
+  async decodeTextureThumbnail(path: string, maxSize = 128): Promise<string> {
+    requireTauri("decode_texture_thumbnail");
+    return invoke<string>("decode_texture_thumbnail", { path, maxSize });
+  },
+
+  /** Decodes a .dds and writes a real .png file at outputPath (Texture Viewer "Export as PNG"). */
+  async exportTexturePng(ddsPath: string, outputPath: string): Promise<void> {
+    requireTauri("export_texture_png");
+    return invoke<void>("export_texture_png", { ddsPath, outputPath });
+  },
+
+  /** Verbatim file copy (Texture Viewer "Export as DDS"). */
+  async copyFile(sourcePath: string, destPath: string): Promise<void> {
+    requireTauri("copy_file");
+    return invoke<void>("copy_file", { sourcePath, destPath });
   },
 };

@@ -39,3 +39,21 @@ public record DrawableInfo(
 public record InspectYddResult(bool Ok, string? Error, List<DrawableInfo>? Drawables);
 
 public record GenTestYtdResult(bool Ok, string Path, int Bytes);
+
+public record MeshPart(
+    string ShaderName,
+    int VertexCount,
+    int IndexCount,
+    float[] Positions,
+    float[] Normals,
+    float[] Uv0,
+    int[] Indices
+);
+
+public record ExportGeometryResult(
+    bool Ok,
+    string? Error,
+    string? DrawableName,
+    string? LodUsed,
+    List<MeshPart>? Parts
+);
