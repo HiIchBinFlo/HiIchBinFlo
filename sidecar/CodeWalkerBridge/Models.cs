@@ -40,6 +40,8 @@ public record InspectYddResult(bool Ok, string? Error, List<DrawableInfo>? Drawa
 
 public record GenTestYtdResult(bool Ok, string Path, int Bytes);
 
+public record RepairResult(bool Ok, string? Error, string? OutputPath, int InputBytes, int OutputBytes);
+
 public record MeshPart(
     string ShaderName,
     int VertexCount,
@@ -47,7 +49,8 @@ public record MeshPart(
     float[] Positions,
     float[] Normals,
     float[] Uv0,
-    int[] Indices
+    int[] Indices,
+    int[] DominantBoneIndex
 );
 
 public record ExportGeometryResult(

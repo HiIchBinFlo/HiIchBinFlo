@@ -21,6 +21,7 @@ pub struct MeshPart {
     pub normals: Vec<f32>,
     pub uv0: Vec<f32>,
     pub indices: Vec<i32>,
+    pub dominant_bone_index: Vec<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,11 +39,16 @@ pub async fn export_geometry(
     app: tauri::AppHandle,
     path: String,
     drawable: Option<String>,
+    lod: Option<String>,
 ) -> AppResult<ExportGeometryResult> {
     let mut args = vec!["export-geometry".to_string(), path];
     if let Some(d) = drawable {
         args.push("--drawable".to_string());
         args.push(d);
+    }
+    if let Some(l) = lod {
+        args.push("--lod".to_string());
+        args.push(l);
     }
     run_sidecar(&app, args).await
 }

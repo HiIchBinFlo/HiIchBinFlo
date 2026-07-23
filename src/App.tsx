@@ -6,6 +6,7 @@ import { NewProjectDialog } from "@/components/project/NewProjectDialog";
 import { ImportDialog } from "@/components/project/ImportDialog";
 import { ExportDialog } from "@/components/project/ExportDialog";
 import { ValidationDialog } from "@/components/dialogs/ValidationDialog";
+import { NewClothingItemDialog } from "@/components/clothing/NewClothingItemDialog";
 import { useProjectStore } from "@/stores/projectStore";
 import { isTauri, tauriApi, TauriUnavailableError } from "@/lib/tauri";
 
@@ -96,6 +97,7 @@ export default function App() {
       <ImportDialog />
       <ExportDialog />
       <ValidationDialog />
+      <NewClothingItemDialog />
       <Toaster theme="dark" position="bottom-right" richColors />
     </TooltipProvider>
   );

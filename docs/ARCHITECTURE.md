@@ -69,10 +69,12 @@ save/export is checked against. Both are fully unit tested; see
 | `sidecar_probe` | Health check: is `codewalker-bridge` present and working? |
 | `inspect_ytd` | Real texture decode (dimensions/format/mips) via the sidecar, optional `.dds` extraction |
 | `inspect_ydd` | Real drawable decode (bounding box, LODs, bones, geometry stats) via the sidecar |
-| `export_geometry` | Real vertex/index geometry for the isolated mesh preview, via the sidecar |
+| `export_geometry` | Real vertex/index/bone geometry for the isolated mesh preview, via the sidecar |
 | `decode_texture_png` | Decodes an extracted `.dds` to a base64 PNG (native Rust, `texture_decode.rs`) |
 | `decode_texture_thumbnail` | Same, downsampled — used for `ClothingDrawable.thumbnail` |
 | `export_texture_png` / `copy_file` | Texture Viewer's "Export as PNG" (re-encode) / "Export as DDS" (verbatim copy) |
+| `repair_ytd` / `repair_ydd` | Write-back proof: re-serialize a real file through CodeWalker.Core, verified before writing |
+| `refresh_asset_ref` | Recomputes an asset's size/hash after `repair_*` changes its bytes in place |
 
 All commands return `Result<T, AppError>`; `AppError` serializes to a plain
 string the frontend surfaces via `sonner` toasts (`src/lib/tauri.ts`).
@@ -91,6 +93,26 @@ TextureDictionary object graph itself — that logic lives entirely in
 `sidecar/CodeWalkerBridge/Commands.cs`, calling into the real
 `CodeWalker.Core` library. See `docs/FILE_FORMATS.md` and `docs/ROADMAP.md`
 (Phase 2) for the reasoning behind this split.
+
+## The write-back pattern (Phase 4)
+
+`repair_ytd`/`repair_ydd` follow a "verify before write" shape worth naming
+explicitly, since it's the pattern any future write-back feature in this
+project should reuse: (1) load the real file through
+`RpfFile.GetResourceFile<T>` — this is CodeWalker.Core's own reader
+populating the *entire* object graph, so every pointer/skeleton/shader-group
+reference is already correctly wired by construction, unlike building a
+resource from scratch (see `GenTestYtd`'s doc comment for why that path is
+harder); (2) call `.Save()` to re-serialize; (3) reload the *output* bytes
+and check they still contain the same number of textures/drawables; (4) only
+then write to disk. A failure at any step returns `ok:false` with no file
+written — the on-disk file is never left in a partially-written or
+unverified state.
+
+Every write-back command sits on top of this. The write-back proof will only
+"apply an edit" once something *mutates* the loaded object graph between
+steps 1 and 2 — deliberately not built yet (see `docs/ROADMAP.md`'s Phase 4
+"Why raw vertex editing is out of scope").
 
 The sidecar binary itself is built by `scripts/publish-sidecar.mjs`
 (self-contained `dotnet publish`, one per target platform) and is **not**
@@ -137,13 +159,16 @@ implementations for the same reason as the slot system above.
   validation logic, the RSC7 container codec, and BC1-7 texture decoding
   (unit tests plus integration tests cross-validated against real, committed
   fixture files — see `docs/FILE_FORMATS.md`). 31 unit + 6 integration tests
-  as of Phase 3.
+  as of Phase 4 (`repair_ytd`/`repair_ydd`/`refresh_asset_ref` are thin
+  passthroughs to the sidecar with no independent Rust-side logic to unit
+  test — their correctness is the sidecar smoke test below).
 - TypeScript: `npm run test` (Vitest) — slot system, mirroring the Rust suite's
   scenarios exactly (including the spec's own delete-id-2-of-5 example).
 - `codewalker-bridge`: no separate unit test project (it's a thin wrapper
   around a well-tested external library); CI runs a smoke test exercising
-  every command, including verifying that feeding it the wrong resource type
-  fails gracefully (`ok:false`) instead of crashing.
+  every command, including the write-back path (`repair-ytd` round-tripped
+  and re-inspected) and verifying that feeding a command the wrong resource
+  type fails gracefully (`ok:false`) instead of crashing.
 - CI (`.github/workflows/ci.yml`): typecheck + lint + test + build for the
   frontend; a sidecar build + smoke test job; `cargo check`/`clippy -D
   warnings`/`test` for the backend (which requires the sidecar to be

@@ -8,8 +8,9 @@ Built with Tauri (Rust) + React + TypeScript + Zustand + SQLite, plus a small
 bundled .NET sidecar (`sidecar/CodeWalkerBridge`) wrapping the real
 CodeWalker.Core library for genuine `.ydd`/`.ytd` decoding.
 
-> **Status: Phases 1-3 complete.** See [docs/ROADMAP.md](docs/ROADMAP.md) for
-> what's implemented today vs. planned, and [docs/FILE_FORMATS.md](docs/FILE_FORMATS.md)
+> **Status: Phases 1-4 complete.** See [docs/ROADMAP.md](docs/ROADMAP.md) for
+> what's implemented today vs. planned (including one correction to an
+> earlier version of that document), and [docs/FILE_FORMATS.md](docs/FILE_FORMATS.md)
 > for an honest breakdown of what is and isn't parsed at a binary level.
 
 ## Why this exists
@@ -78,19 +79,19 @@ src/                    React frontend
   components/
     ui/                 Radix-based primitives (button, dialog, select, ...)
     layout/              Toolbar, Sidebar, Inspector, MainLayout, StatusBar, DecodedInfoPanel
-    clothing/            Virtualized grid/list views for the clothing collection
+    clothing/            Grid/list views, NewClothingItemDialog (Custom Clothing Creator)
     project/             New/Open project, Import, Export dialogs
     dialogs/             Validation dialog
-    preview/             Isolated 3D mesh preview (React Three Fiber, lazy-loaded)
+    preview/             Isolated 3D mesh preview (React Three Fiber, lazy-loaded): LOD switch, bone viz
     texture/             Real decoded Texture Viewer (image + export)
-    mesh/                Reserved for Phase 4 (mesh editing) — see its README
+    mesh/                Intentionally empty — see its README (raw vertex editing is out of scope)
   stores/                Zustand stores: project state + undo/redo, UI state
   lib/                   slotSystem.ts (the core ID-safety algorithm), validation.ts, tauri.ts
   types/                 Shared domain model
 
 src-tauri/               Rust backend
   src/
-    commands/            Tauri commands: project, import, export, assets, validate, inspect, preview
+    commands/            Tauri commands: project, import, export, assets, validate, inspect, preview, repair
     parsers/             filename.rs, fxmanifest.rs, meta_xml.rs, rage_resource.rs (RSC7 codec)
     sidecar.rs            Invokes the codewalker-bridge sidecar, parses its JSON output
     texture_decode.rs      BC1-7 DDS decode -> PNG/thumbnail, native Rust

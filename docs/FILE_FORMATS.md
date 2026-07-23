@@ -1,7 +1,7 @@
 # File Formats — What's Actually Implemented
 
 Honest, per-format breakdown of what FiveM Clothing Studio does today
-(through Phase 3) vs. what's planned. No format below is faked or stubbed to
+(through Phase 4) vs. what's planned. No format below is faked or stubbed to
 look more complete than it is — where something isn't implemented, it's
 explicitly rejected/flagged rather than silently mishandled.
 
@@ -24,21 +24,30 @@ explicitly rejected/flagged rather than silently mishandled.
    whether an embedded texture dictionary is present. Wired into the
    Inspector's on-demand "Decode" action.
 3. **Vertex/index geometry content** (Phase 3) — `export-geometry` returns
-   real positions, normals, UV0 and triangle indices per geometry, powering
-   the isolated mesh preview (`src/components/preview/MeshPreview.tsx`). This
-   is the **one piece of this project's decoding that could not be
-   empirically cross-validated** the way everything else was (no real `.ydd`
-   file to test the read path against, and hand-constructing a valid
-   `VertexDeclaration` to test in isolation turned out to be infeasible —
-   CodeWalker.Core only ever builds one from real file bytes). The
-   implementation calls CodeWalker.Core's own `VertexData.GetVector3`/
-   `GetVector2` accessors (the same ones its production 3D renderer uses)
-   with `VertexSemantics` indices rather than re-deriving the binary packing
-   itself — see `docs/ROADMAP.md`'s Phase 3 section for the full reasoning
-   and what to check first if a real pack ever renders with a visibly wrong
-   mesh shape.
-
-Still not implemented: any write-back path for edited geometry (Phase 4).
+   real positions, normals, UV0, triangle indices, and (Phase 4) a
+   per-vertex dominant bone index per geometry, powering the isolated mesh
+   preview (`src/components/preview/MeshPreview.tsx`) and its bone-weight
+   visualization toggle. This is the **one piece of this project's decoding
+   that could not be empirically cross-validated** the way everything else
+   was (no real `.ydd` file to test the read path against, and
+   hand-constructing a valid `VertexDeclaration` to test in isolation turned
+   out to be infeasible — CodeWalker.Core only ever builds one from real
+   file bytes). The implementation calls CodeWalker.Core's own
+   `VertexData.GetVector3`/`GetVector2`/`GetUByte4` accessors (the same ones
+   its production 3D renderer uses) with `VertexSemantics` indices rather
+   than re-deriving the binary packing itself — see `docs/ROADMAP.md`'s
+   Phase 3 section for the full reasoning and what to check first if a real
+   pack ever renders with a visibly wrong mesh shape.
+4. **Write-back** (Phase 4) — `repair-ytd`/`repair-ydd` load a real file
+   through CodeWalker.Core's reader and re-serialize it through the same
+   library's writer, verifying the output reloads with matching content
+   *before* writing anything to disk. This is real, not a stub: verified
+   against the committed `sample.ytd` fixture (155 bytes in, 155 bytes out,
+   identical content on reload) and exposed as a "Repair" action in the
+   Inspector. What it does *not* do yet is apply content *edits* — it proves
+   the write path with the object graph unchanged; wiring actual geometry
+   edits through the same path is explicitly out of scope for this project
+   (see `docs/ROADMAP.md`'s Phase 4 section for why).
 
 Every `.ydd` is still also copied byte-for-byte into project storage and
 SHA-256 hashed on import/export regardless of whether it's ever decoded —

@@ -23,7 +23,8 @@ interface UiStore {
   isExportDialogOpen: boolean;
   isValidationDialogOpen: boolean;
   isNewProjectDialogOpen: boolean;
-  setDialog: (dialog: "import" | "export" | "validation" | "newProject", open: boolean) => void;
+  isNewItemDialogOpen: boolean;
+  setDialog: (dialog: "import" | "export" | "validation" | "newProject" | "newItem", open: boolean) => void;
 }
 
 export const useUiStore = create<UiStore>((set, get) => ({
@@ -63,6 +64,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
   isExportDialogOpen: false,
   isValidationDialogOpen: false,
   isNewProjectDialogOpen: false,
+  isNewItemDialogOpen: false,
   setDialog: (dialog, open) => {
     switch (dialog) {
       case "import":
@@ -76,6 +78,9 @@ export const useUiStore = create<UiStore>((set, get) => ({
         break;
       case "newProject":
         set({ isNewProjectDialogOpen: open });
+        break;
+      case "newItem":
+        set({ isNewItemDialogOpen: open });
         break;
     }
   },

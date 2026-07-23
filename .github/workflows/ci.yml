@@ -32,15 +32,18 @@ jobs:
       - name: dotnet build
         working-directory: sidecar/CodeWalkerBridge
         run: dotnet build
-      - name: Smoke test (probe, gen-test-ytd, inspect-ytd, inspect-ydd/export-geometry error handling)
+      - name: Smoke test (probe, gen-test-ytd, inspect-ytd, repair-ytd, inspect-ydd/export-geometry error handling)
         working-directory: sidecar/CodeWalkerBridge
         run: |
           dotnet run -- probe
           dotnet run -- gen-test-ytd /tmp/ci-sample.ytd
           dotnet run -- inspect-ytd /tmp/ci-sample.ytd --extract-dir /tmp/ci-extract
+          dotnet run -- repair-ytd /tmp/ci-sample.ytd /tmp/ci-repaired.ytd
+          dotnet run -- inspect-ytd /tmp/ci-repaired.ytd
           # Feeding the wrong resource type must fail gracefully (ok:false), not crash.
           dotnet run -- inspect-ydd /tmp/ci-sample.ytd
           dotnet run -- export-geometry /tmp/ci-sample.ytd
+          dotnet run -- repair-ydd /tmp/ci-sample.ytd /tmp/ci-repaired.ydd
 
   # cargo (check/clippy/test/build) all require the externalBin sidecar path
   # declared in tauri.conf.json to exist on disk, even for `cargo check` -

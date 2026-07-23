@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Copy, Trash2, FileUp, FileX, Hash, Box } from "lucide-react";
+import { Copy, Trash2, FileUp, FileX, Hash, Box, Wrench } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -19,7 +19,7 @@ import { useProjectStore } from "@/stores/projectStore";
 import { useUiStore } from "@/stores/uiStore";
 import { PED_COMPONENTS, PED_PROPS, type BinaryAssetRef, type ClothingDrawable, type LodLevel } from "@/types/clothing";
 import { formatBytes } from "@/lib/utils";
-import { tauriApi, TauriUnavailableError } from "@/lib/tauri";
+import { assetAbsolutePath, tauriApi, TauriUnavailableError } from "@/lib/tauri";
 import { DecodedInfoPanel } from "./DecodedInfoPanel";
 
 // Lazy-loaded: three.js is a large dependency that only users who actually
@@ -127,6 +127,44 @@ export function Inspector() {
         textures: item.textures.map((t) => (t.textureId === textureId ? { ...t, file: asset } : t)),
       });
       toast.success(`Duplicated as "${asset.fileName}".`);
+    } catch (err) {
+      reportAssetError(err);
+    }
+  }
+
+  async function handleRepairMesh() {
+    if (!project || !item.mesh) return;
+    try {
+      const absPath = assetAbsolutePath(project.dbPath, item.mesh.relativePath);
+      const result = await tauriApi.repairYdd(absPath, absPath);
+      if (!result.ok) {
+        toast.error(result.error ?? "Repair failed");
+        return;
+      }
+      const refreshed = await tauriApi.refreshAssetRef(project.dbPath, item.mesh.relativePath);
+      updateItem(item.id, { mesh: refreshed });
+      toast.success(`Repaired (${result.inputBytes} → ${result.outputBytes} bytes).`);
+    } catch (err) {
+      reportAssetError(err);
+    }
+  }
+
+  async function handleRepairTexture(textureId: number) {
+    if (!project) return;
+    const tex = item.textures.find((t) => t.textureId === textureId);
+    if (!tex?.file) return;
+    try {
+      const absPath = assetAbsolutePath(project.dbPath, tex.file.relativePath);
+      const result = await tauriApi.repairYtd(absPath, absPath);
+      if (!result.ok) {
+        toast.error(result.error ?? "Repair failed");
+        return;
+      }
+      const refreshed = await tauriApi.refreshAssetRef(project.dbPath, tex.file.relativePath);
+      updateItem(item.id, {
+        textures: item.textures.map((t) => (t.textureId === textureId ? { ...t, file: refreshed } : t)),
+      });
+      toast.success(`Repaired (${result.inputBytes} → ${result.outputBytes} bytes).`);
     } catch (err) {
       reportAssetError(err);
     }
@@ -297,6 +335,7 @@ export function Inspector() {
               onClear={() => updateItem(item.id, { mesh: null })}
               onReplace={handleReplaceMesh}
               onDuplicate={item.mesh ? handleDuplicateMesh : undefined}
+              onRepair={item.mesh ? handleRepairMesh : undefined}
             />
           </div>
 
@@ -326,6 +365,7 @@ export function Inspector() {
                       }
                       onReplace={() => handleReplaceTexture(tex.textureId)}
                       onDuplicate={tex.file ? () => handleDuplicateTexture(tex.textureId) : undefined}
+                      onRepair={tex.file ? () => handleRepairTexture(tex.textureId) : undefined}
                     />
                   </div>
                 </div>
@@ -402,6 +442,7 @@ function AssetRow({
   onClear,
   onReplace,
   onDuplicate,
+  onRepair,
 }: {
   fileName: string | null;
   size?: number;
@@ -410,6 +451,7 @@ function AssetRow({
   onClear: () => void;
   onReplace?: () => void;
   onDuplicate?: () => void;
+  onRepair?: () => void;
 }) {
   return (
     <div className="flex items-center justify-between rounded-md border border-dashed border-border px-2 py-1.5 text-xs">
@@ -442,6 +484,18 @@ function AssetRow({
             onClick={onDuplicate}
           >
             <Copy className="h-3 w-3" />
+          </Button>
+        )}
+        {fileName && present && onRepair && (
+          <Button
+            variant="ghost"
+            size="icon"
+            title="Repair (re-save through CodeWalker.Core)"
+            className="h-6 w-6"
+            disabled={disabled}
+            onClick={onRepair}
+          >
+            <Wrench className="h-3 w-3" />
           </Button>
         )}
         {fileName && (

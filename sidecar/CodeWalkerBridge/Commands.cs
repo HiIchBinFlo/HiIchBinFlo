@@ -175,7 +175,7 @@ public static class Commands
     /// of reimplementing them. Absent semantics (e.g. no second UV channel)
     /// read back as zero rather than throwing - confirmed empirically.
     /// </summary>
-    public static ExportGeometryResult ExportGeometry(string path, string? drawableName)
+    public static ExportGeometryResult ExportGeometry(string path, string? drawableName, string? requestedLod = null)
     {
         if (!File.Exists(path))
         {
@@ -203,10 +203,15 @@ public static class Commands
             return new ExportGeometryResult(false, "No matching drawable found in this .ydd.", null, null, null);
         }
 
-        var (models, lodUsed) = PickBestLod(drawable);
+        var (models, lodUsed) = requestedLod != null
+            ? PickExactLod(drawable, requestedLod)
+            : PickBestLod(drawable);
         if (models == null || models.Length == 0)
         {
-            return new ExportGeometryResult(false, $"Drawable \"{drawable.Name}\" has no geometry at any LOD.", drawable.Name, null, null);
+            var message = requestedLod != null
+                ? $"Drawable \"{drawable.Name}\" has no geometry at LOD \"{requestedLod}\"."
+                : $"Drawable \"{drawable.Name}\" has no geometry at any LOD.";
+            return new ExportGeometryResult(false, message, drawable.Name, null, null);
         }
 
         var parts = new List<MeshPart>();
@@ -221,6 +226,8 @@ public static class Commands
                 var positions = new float[vertexCount * 3];
                 var normals = new float[vertexCount * 3];
                 var uv0 = new float[vertexCount * 2];
+                var dominantBoneIndex = new int[vertexCount];
+                var boneIds = geom.BoneIds; // local blend-index -> skeleton bone id, when the geometry is skinned
 
                 for (int v = 0; v < vertexCount; v++)
                 {
@@ -237,6 +244,23 @@ public static class Commands
                     var uv = vertexData.GetVector2((int)VertexSemantics.TexCoord0, v);
                     uv0[v * 2 + 0] = uv.X;
                     uv0[v * 2 + 1] = uv.Y;
+
+                    // "Bone assignments" (Phase 4): the local blend index with the
+                    // highest blend weight, resolved through the geometry's BoneIds
+                    // table to an actual skeleton bone id when present. Best-effort
+                    // visualization, not exact skinning reproduction - see
+                    // docs/FILE_FORMATS.md for the same caveat that applies to
+                    // position/normal/UV extraction above.
+                    var weights = vertexData.GetUByte4((int)VertexSemantics.BlendWeights, v);
+                    var localIndices = vertexData.GetUByte4((int)VertexSemantics.BlendIndices, v);
+                    byte maxWeight = weights.R;
+                    byte maxLocalIndex = localIndices.R;
+                    if (weights.G > maxWeight) { maxWeight = weights.G; maxLocalIndex = localIndices.G; }
+                    if (weights.B > maxWeight) { maxWeight = weights.B; maxLocalIndex = localIndices.B; }
+                    if (weights.A > maxWeight) { maxWeight = weights.A; maxLocalIndex = localIndices.A; }
+                    dominantBoneIndex[v] = (boneIds != null && maxLocalIndex < boneIds.Length)
+                        ? boneIds[maxLocalIndex]
+                        : maxLocalIndex;
                 }
 
                 var indicesSource = geom.IndexBuffer?.Indices ?? Array.Empty<ushort>();
@@ -250,7 +274,8 @@ public static class Commands
                     positions,
                     normals,
                     uv0,
-                    indices
+                    indices,
+                    dominantBoneIndex
                 ));
             }
         }
@@ -267,6 +292,146 @@ public static class Commands
         if (block.Low is { Length: > 0 }) return (block.Low, "low");
         if (block.VLow is { Length: > 0 }) return (block.VLow, "vlow");
         return (null, null);
+    }
+
+    private static (DrawableModel[]? models, string? lod) PickExactLod(Drawable d, string lod)
+    {
+        var block = d.DrawableModels;
+        if (block == null) return (null, null);
+        var models = lod.ToLowerInvariant() switch
+        {
+            "high" => block.High,
+            "med" => block.Med,
+            "low" => block.Low,
+            "vlow" => block.VLow,
+            _ => null,
+        };
+        return models is { Length: > 0 } ? (models, lod.ToLowerInvariant()) : (null, null);
+    }
+
+    /// <summary>
+    /// Write-back proof (Phase 4): loads a real, already-valid .ytd through
+    /// CodeWalker.Core's reader and re-serializes it through the same
+    /// library's writer, verifying the result reloads correctly before
+    /// returning. Unlike Commands.GenTestYtd (which builds a resource from
+    /// scratch, needing every pointer-referenced block wired by hand), this
+    /// starts from an object graph CodeWalker.Core populated itself via a
+    /// successful Read() - so the harder "build a valid graph" problem is
+    /// already solved by construction. Useful standalone (re-normalizing a
+    /// file written by a less careful tool) and as the technical foundation
+    /// any future content-editing feature would build on.
+    /// </summary>
+    public static RepairResult RepairYtd(string inputPath, string outputPath)
+    {
+        if (!File.Exists(inputPath))
+        {
+            return new RepairResult(false, $"File not found: {inputPath}", null, 0, 0);
+        }
+
+        byte[] inputBytes = File.ReadAllBytes(inputPath);
+        YtdFile ytd;
+        try
+        {
+            ytd = RpfFile.GetResourceFile<YtdFile>(inputBytes);
+        }
+        catch (Exception ex)
+        {
+            return new RepairResult(false, $"Not a valid .ytd resource: {ex.Message}", null, inputBytes.Length, 0);
+        }
+
+        byte[] outputBytes;
+        try
+        {
+            outputBytes = ytd.Save();
+        }
+        catch (Exception ex)
+        {
+            return new RepairResult(false, $"Failed to re-serialize: {ex.Message}", null, inputBytes.Length, 0);
+        }
+
+        // Verify before writing anything to disk: the output must itself be
+        // loadable and contain the same number of textures as the input.
+        YtdFile reloaded;
+        try
+        {
+            reloaded = RpfFile.GetResourceFile<YtdFile>(outputBytes);
+        }
+        catch (Exception ex)
+        {
+            return new RepairResult(false, $"Re-serialized output failed to reload: {ex.Message}", null, inputBytes.Length, 0);
+        }
+
+        var originalCount = ytd.TextureDict?.Textures?.data_items?.Length ?? 0;
+        var reloadedCount = reloaded.TextureDict?.Textures?.data_items?.Length ?? 0;
+        if (originalCount != reloadedCount)
+        {
+            return new RepairResult(
+                false,
+                $"Re-serialized output has {reloadedCount} textures, expected {originalCount}. Refusing to write.",
+                null,
+                inputBytes.Length,
+                0
+            );
+        }
+
+        File.WriteAllBytes(outputPath, outputBytes);
+        return new RepairResult(true, null, outputPath, inputBytes.Length, outputBytes.Length);
+    }
+
+    /// <summary>Same write-back proof as <see cref="RepairYtd"/>, for .ydd drawable dictionaries.</summary>
+    public static RepairResult RepairYdd(string inputPath, string outputPath)
+    {
+        if (!File.Exists(inputPath))
+        {
+            return new RepairResult(false, $"File not found: {inputPath}", null, 0, 0);
+        }
+
+        byte[] inputBytes = File.ReadAllBytes(inputPath);
+        YddFile ydd;
+        try
+        {
+            ydd = RpfFile.GetResourceFile<YddFile>(inputBytes);
+        }
+        catch (Exception ex)
+        {
+            return new RepairResult(false, $"Not a valid .ydd resource: {ex.Message}", null, inputBytes.Length, 0);
+        }
+
+        byte[] outputBytes;
+        try
+        {
+            outputBytes = ydd.Save();
+        }
+        catch (Exception ex)
+        {
+            return new RepairResult(false, $"Failed to re-serialize: {ex.Message}", null, inputBytes.Length, 0);
+        }
+
+        YddFile reloaded;
+        try
+        {
+            reloaded = RpfFile.GetResourceFile<YddFile>(outputBytes);
+        }
+        catch (Exception ex)
+        {
+            return new RepairResult(false, $"Re-serialized output failed to reload: {ex.Message}", null, inputBytes.Length, 0);
+        }
+
+        var originalCount = ydd.Drawables?.Length ?? 0;
+        var reloadedCount = reloaded.Drawables?.Length ?? 0;
+        if (originalCount != reloadedCount)
+        {
+            return new RepairResult(
+                false,
+                $"Re-serialized output has {reloadedCount} drawables, expected {originalCount}. Refusing to write.",
+                null,
+                inputBytes.Length,
+                0
+            );
+        }
+
+        File.WriteAllBytes(outputPath, outputBytes);
+        return new RepairResult(true, null, outputPath, inputBytes.Length, outputBytes.Length);
     }
 
     /// <summary>

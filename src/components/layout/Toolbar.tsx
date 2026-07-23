@@ -3,6 +3,7 @@ import {
   FolderPlus,
   LayoutGrid,
   List,
+  PlusCircle,
   Redo2,
   Save,
   Settings,
@@ -73,6 +74,9 @@ export function Toolbar() {
 
       <Separator orientation="vertical" className="mx-1 h-6" />
 
+      <ToolbarButton label="New Clothing Item" disabled={!project} onClick={() => setDialog("newItem", true)}>
+        <PlusCircle className="h-4 w-4" />
+      </ToolbarButton>
       <ToolbarButton label="Import" disabled={!project} onClick={() => setDialog("import", true)}>
         <Upload className="h-4 w-4" />
       </ToolbarButton>

@@ -64,6 +64,14 @@ export interface ExportGeometryResult {
   parts: MeshPart[] | null;
 }
 
+export interface RepairResult {
+  ok: boolean;
+  error: string | null;
+  outputPath: string | null;
+  inputBytes: number;
+  outputBytes: number;
+}
+
 /** Thrown when a Tauri command is invoked outside of the desktop shell (e.g. `vite dev` in a browser). */
 export class TauriUnavailableError extends Error {
   constructor(command: string) {
@@ -162,10 +170,14 @@ export const tauriApi = {
     return invoke<InspectYddResult>("inspect_ydd", { path });
   },
 
-  /** Real vertex/index geometry (positions/normals/uv0) for the isolated mesh preview. Phase 3. */
-  async exportGeometry(path: string, drawable?: string): Promise<ExportGeometryResult> {
+  /** Real vertex/index geometry (positions/normals/uv0) for the isolated mesh preview. Phase 3/4. */
+  async exportGeometry(path: string, drawable?: string, lod?: string): Promise<ExportGeometryResult> {
     requireTauri("export_geometry");
-    return invoke<ExportGeometryResult>("export_geometry", { path, drawable: drawable ?? null });
+    return invoke<ExportGeometryResult>("export_geometry", {
+      path,
+      drawable: drawable ?? null,
+      lod: lod ?? null,
+    });
   },
 
   /** Decodes an already-extracted .dds file to a base64 PNG (pure Rust, no sidecar). Phase 3. */
@@ -190,5 +202,25 @@ export const tauriApi = {
   async copyFile(sourcePath: string, destPath: string): Promise<void> {
     requireTauri("copy_file");
     return invoke<void>("copy_file", { sourcePath, destPath });
+  },
+
+  /**
+   * Write-back proof (Phase 4): re-serializes a .ytd/.ydd through
+   * CodeWalker.Core, verifying the result reloads correctly before writing.
+   * `inputPath`/`outputPath` may be the same path for an in-place repair.
+   */
+  async repairYtd(inputPath: string, outputPath: string): Promise<RepairResult> {
+    requireTauri("repair_ytd");
+    return invoke<RepairResult>("repair_ytd", { inputPath, outputPath });
+  },
+  async repairYdd(inputPath: string, outputPath: string): Promise<RepairResult> {
+    requireTauri("repair_ydd");
+    return invoke<RepairResult>("repair_ydd", { inputPath, outputPath });
+  },
+
+  /** Recomputes an asset's size/hash from disk after `repairYtd`/`repairYdd` changes its bytes. */
+  async refreshAssetRef(dbPath: string, relativePath: string): Promise<BinaryAssetRef> {
+    requireTauri("refresh_asset_ref");
+    return invoke<BinaryAssetRef>("refresh_asset_ref", { dbPath, relativePath });
   },
 };

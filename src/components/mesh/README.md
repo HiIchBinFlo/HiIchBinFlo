@@ -1,11 +1,18 @@
-# `mesh/` — reserved for Phase 4 (Mesh Editor)
+# `mesh/` — intentionally empty
 
-Still empty as of Phase 3. *Viewing* real mesh geometry now works — see
-`src/components/preview/MeshPreview.tsx` (real decoded vertices/normals/UVs,
-orbit/zoom, real texture applied). What's not implemented yet, and what this
-directory is reserved for, is *editing*: moving vertices/UVs, reassigning
-bone weights, switching LOD content, and writing the result back to a valid
-`.ydd`. The write-back path is the harder half — CodeWalker.Core can build
-valid resources (confirmed via the sidecar's `gen-test-ytd`), but no UI or
-Tauri command exists yet to construct an *edited* Drawable's object graph and
-save it.
+Real mesh *viewing* and *structural editing* both now exist, just not here:
+
+- Geometry/texture/LOD/bone-assignment viewing:
+  `src/components/preview/MeshPreview.tsx` + `MeshPreviewDialog.tsx`.
+- Item creation, DLC assignment, file replace/duplicate/repair:
+  `src/components/clothing/NewClothingItemDialog.tsx`,
+  `src/components/layout/Inspector.tsx`.
+
+What's deliberately not built is interactive vertex/UV *content* editing
+(dragging vertices, hand-painting weights) — a full 3D-modeling-tool feature
+set that doesn't match how clothing modders actually work (they sculpt in
+Blender/3ds Max and export). See the "Why raw vertex editing is out of
+scope" note in `docs/ROADMAP.md`'s Phase 4 section for the reasoning. The
+write-back path this would need is proven and ready
+(`sidecar/CodeWalkerBridge/Commands.cs::RepairYtd`/`RepairYdd`) if that scope
+decision is ever revisited.

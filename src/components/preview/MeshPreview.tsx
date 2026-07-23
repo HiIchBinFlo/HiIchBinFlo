@@ -16,7 +16,15 @@ import type { MeshPart } from "@/types/clothing";
  * from a CDN at runtime, and this app is meant to work fully offline. See
  * docs/ROADMAP.md.
  */
-export function MeshPreview({ parts, textureDataUrl }: { parts: MeshPart[]; textureDataUrl?: string | null }) {
+export function MeshPreview({
+  parts,
+  textureDataUrl,
+  showBoneWeights = false,
+}: {
+  parts: MeshPart[];
+  textureDataUrl?: string | null;
+  showBoneWeights?: boolean;
+}) {
   return (
     <Canvas camera={{ position: [1.2, 0.8, 1.2], fov: 40 }} dpr={[1, 2]}>
       <color attach="background" args={["#15171c"]} />
@@ -25,24 +33,46 @@ export function MeshPreview({ parts, textureDataUrl }: { parts: MeshPart[]; text
       <directionalLight position={[-3, 1, -2]} intensity={0.35} color="#88aaff" />
       <directionalLight position={[0, -2, -3]} intensity={0.25} color="#ffddaa" />
       <Bounds fit clip observe margin={1.4}>
-        <FramedParts parts={parts} textureDataUrl={textureDataUrl} />
+        <FramedParts parts={parts} textureDataUrl={textureDataUrl} showBoneWeights={showBoneWeights} />
       </Bounds>
       <OrbitControls makeDefault enableDamping dampingFactor={0.12} />
     </Canvas>
   );
 }
 
-function FramedParts({ parts, textureDataUrl }: { parts: MeshPart[]; textureDataUrl?: string | null }) {
+function FramedParts({
+  parts,
+  textureDataUrl,
+  showBoneWeights,
+}: {
+  parts: MeshPart[];
+  textureDataUrl?: string | null;
+  showBoneWeights: boolean;
+}) {
   return (
     <group>
       {parts.map((part, i) => (
-        <PartMesh key={i} part={part} textureDataUrl={textureDataUrl} />
+        <PartMesh key={i} part={part} textureDataUrl={textureDataUrl} showBoneWeights={showBoneWeights} />
       ))}
     </group>
   );
 }
 
-function PartMesh({ part, textureDataUrl }: { part: MeshPart; textureDataUrl?: string | null }) {
+/** Deterministic, visually distinct color per bone index (golden-angle hue rotation). */
+function colorForBone(boneIndex: number): THREE.Color {
+  const hue = (boneIndex * 137.508) % 360;
+  return new THREE.Color().setHSL(hue / 360, 0.65, 0.55);
+}
+
+function PartMesh({
+  part,
+  textureDataUrl,
+  showBoneWeights,
+}: {
+  part: MeshPart;
+  textureDataUrl?: string | null;
+  showBoneWeights: boolean;
+}) {
   const bounds = useBounds();
 
   const geometry = useMemo(() => {
@@ -63,6 +93,18 @@ function PartMesh({ part, textureDataUrl }: { part: MeshPart; textureDataUrl?: s
       // instead of rendering a flat-black, unlit-looking mesh.
       geo.computeVertexNormals();
     }
+
+    if (part.dominantBoneIndex.length === part.vertexCount) {
+      const colors = new Float32Array(part.vertexCount * 3);
+      for (let v = 0; v < part.vertexCount; v++) {
+        const c = colorForBone(part.dominantBoneIndex[v]);
+        colors[v * 3] = c.r;
+        colors[v * 3 + 1] = c.g;
+        colors[v * 3 + 2] = c.b;
+      }
+      geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    }
+
     return geo;
   }, [part]);
 
@@ -75,9 +117,13 @@ function PartMesh({ part, textureDataUrl }: { part: MeshPart; textureDataUrl?: s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [textureDataUrl]);
 
+  const hasBoneColors = part.dominantBoneIndex.length === part.vertexCount;
+
   return (
     <mesh geometry={geometry} castShadow receiveShadow>
-      {texture ? (
+      {showBoneWeights && hasBoneColors ? (
+        <meshStandardMaterial vertexColors side={THREE.DoubleSide} roughness={0.9} />
+      ) : texture ? (
         <meshStandardMaterial map={texture} side={THREE.DoubleSide} roughness={0.85} metalness={0.05} />
       ) : (
         <meshStandardMaterial color="#7d8590" side={THREE.DoubleSide} roughness={0.9} />

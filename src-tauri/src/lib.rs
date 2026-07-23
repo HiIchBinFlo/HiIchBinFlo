@@ -39,6 +39,9 @@ pub fn run() {
             commands::preview::decode_texture_thumbnail,
             commands::preview::export_texture_png,
             commands::preview::copy_file,
+            commands::repair::repair_ytd,
+            commands::repair::repair_ydd,
+            commands::repair::refresh_asset_ref,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

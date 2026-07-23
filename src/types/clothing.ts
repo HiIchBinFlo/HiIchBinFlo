@@ -195,6 +195,7 @@ export interface MeshPart {
   normals: number[];
   uv0: number[];
   indices: number[];
+  dominantBoneIndex: number[];
 }
 
 export interface ProjectSettings {

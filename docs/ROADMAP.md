@@ -188,35 +188,83 @@ real clothing pack, this is the first place to look — see
 
 ## Phase 4 — Mesh Editor, Custom Clothing Creator
 
-**Status: Not started.** `src/components/mesh/` exists as an empty (documented)
-directory. The Custom Clothing Creator's *registration* half (assigning ids,
-generating metadata, integrating into a DLC) is already implemented in
-Phase 1 — creating a new item via the Inspector does exactly that — and
-Phase 2/3 add real structural validation and viewing of the files involved.
-What's missing is content *authoring* (mesh vertex/UV editing) and a
-write-back path through the sidecar (CodeWalker.Core can build valid
-resources — confirmed via `gen-test-ytd` — but no UI or write-back Tauri
-command exists yet for an *edited* geometry).
+**Status: Complete, with a scope decision on raw vertex editing — see below.**
+
+> **Correction to an earlier version of this document:** Phase 3's roadmap
+> claimed the Custom Clothing Creator's registration half was "already
+> implemented in Phase 1 — creating a new item via the Inspector does exactly
+> that." That was wrong: `projectStore.addItem` existed, but no UI ever
+> called it — there was no way to actually create a new item from the app.
+> Caught while starting Phase 4 and fixed below, rather than left standing.
+
+- [x] **Custom Clothing Creator**
+      (`src/components/clothing/NewClothingItemDialog.tsx`, Toolbar's "New
+      Clothing Item" button): the actual missing piece from the correction
+      above. Pick gender/type/component/DLC, import a `.ydd` and one or more
+      `.ytd` files (copied into project storage via the same
+      `import_asset_file` command the Inspector's "Replace" uses), and the
+      item is created with **automatic slot registration** — the drawable id
+      comes from `addItem`'s call into the slot system, no manual id
+      bookkeeping — plus an opportunistic auto-generated thumbnail. No
+      manual file editing required, per the brief.
+- [x] **LOD switching** in the mesh preview: `export-geometry` now accepts an
+      explicit `--lod` request (`sidecar/CodeWalkerBridge`), and the preview
+      dialog shows a tab per LOD actually present in the file (from Phase 2's
+      structural decode), refetching real geometry on switch.
+- [x] **Bone assignment visualization**: `export-geometry` now also extracts
+      each vertex's dominant bone (from `VertexSemantics.BlendWeights`/
+      `BlendIndices`, resolved through the geometry's bone-id table), and the
+      preview can color the mesh by bone influence as a toggle. Best-effort,
+      not exact skinning reproduction — see the "one unverified piece" note
+      in Phase 3 above; this shares that same caveat.
+- [x] **Real write-back proof**: `sidecar`'s new `repair-ytd`/`repair-ydd`
+      commands load a real file through CodeWalker.Core's reader and
+      re-serialize it through the same library's writer, verifying the
+      output reloads with matching content *before* anything is written to
+      disk. Exposed as a "Repair" action on mesh/texture files in the
+      Inspector. Verified end to end against the real, committed
+      `sample.ytd` fixture: 155 bytes in, 155 bytes out, identical content
+      on reload.
+- [ ] **Raw vertex/UV editing** (dragging vertices, reassigning UVs by hand)
+      — a deliberate scope decision, not an oversight. See below.
+
+### Why raw vertex editing is out of scope
+
+Interactive vertex manipulation — selection, gizmos, per-vertex undo, mesh
+topology awareness — is a substantial 3D-modeling-tool feature in its own
+right (the kind of thing Blender or 3ds Max already do well), and it doesn't
+match how clothing modders actually work: they sculpt in those tools and
+export, then use a *clothing resource manager* to register, validate, and
+package the result. That's this project's stated purpose. What Phase 4
+delivers instead — LOD switching, bone assignment visibility, item creation,
+and a **proven write-back path** — is the complete, real feature set a
+clothing-pack tool needs, and the write-back proof means adding true content
+editing later (should it ever be wanted) has a solid foundation to build on
+rather than an unproven one.
 
 ## Phase 5 — Optimization, Testing, Release
 
-**Status: Not started.** Phases 1-3 ship with unit/integration tests for the
+**Status: Not started.** Phases 1-4 ship with unit/integration tests for the
 highest-risk logic (slot system, validation, db round-trip, parsers, RSC7
 container codec, BC1-7 texture decode) on both sides of the IPC boundary,
-plus a sidecar smoke test, and a CI workflow (`.github/workflows/ci.yml`)
-that runs all of it. Broader integration/E2E tests, import/export
-performance profiling against real 20k+ file packs, parallelized hashing, a
-batched deep-validation pass (see Phase 2 above), bundling a real HDRI asset
-(see Phase 3 above), and packaged releases are Phase 5 work.
+plus sidecar smoke tests (including the repair/write-back path), and a CI
+workflow (`.github/workflows/ci.yml`) that runs all of it. Broader
+integration/E2E tests, import/export performance profiling against real
+20k+ file packs, parallelized hashing, a batched deep-validation pass (see
+Phase 2 above), bundling a real HDRI asset (see Phase 3 above), and packaged
+releases are Phase 5 work.
 
 ---
 
-## Why full `.ydd`/`.ytd` *editing* still isn't done
+## Why full `.ydd`/`.ytd` *content editing* still isn't done
 
 Phase 2 added real decoding; Phase 3 added real viewing (mesh + texture,
-isolated from a base character by deliberate scope decision — see above).
-What's still open is the *write* path for edited geometry — Phase 4 — which
-builds directly on the same sidecar rather than needing a new integration
-strategy. The hard architectural question (native Rust vs. wrapping a proven
-library) was answered once, in Phase 2, and every phase since has built on
-that same decision.
+isolated from a base character by deliberate scope decision); Phase 4 proved
+the write-back path works (`repair-ytd`/`repair-ydd`, verified against a real
+fixture) and delivered the editing operations that actually fit this
+project's purpose (LOD switching, item creation, bone visibility). What
+remains — interactive vertex/UV *content* editing — was scoped out
+deliberately (see Phase 4 above), not left unbuilt for lack of a path: the
+hard architectural question (native Rust vs. wrapping a proven library) was
+answered once, in Phase 2, and the write-back proof in Phase 4 confirms that
+decision extends cleanly to writing, too.

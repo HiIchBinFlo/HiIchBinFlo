@@ -11,7 +11,7 @@ try
 {
     if (args.Length == 0)
     {
-        WriteError("No command given. Usage: codewalker-bridge <probe|inspect-ytd|inspect-ydd|export-geometry|gen-test-ytd> [args...]");
+        WriteError("No command given. Usage: codewalker-bridge <probe|inspect-ytd|inspect-ydd|export-geometry|repair-ytd|repair-ydd|gen-test-ytd> [args...]");
         return 1;
     }
 
@@ -20,7 +20,13 @@ try
         "probe" => Commands.Probe(),
         "inspect-ytd" => Commands.InspectYtd(RequireArg(args, 1, "path"), OptionalOption(args, "--extract-dir")),
         "inspect-ydd" => Commands.InspectYdd(RequireArg(args, 1, "path")),
-        "export-geometry" => Commands.ExportGeometry(RequireArg(args, 1, "path"), OptionalOption(args, "--drawable")),
+        "export-geometry" => Commands.ExportGeometry(
+            RequireArg(args, 1, "path"),
+            OptionalOption(args, "--drawable"),
+            OptionalOption(args, "--lod")
+        ),
+        "repair-ytd" => Commands.RepairYtd(RequireArg(args, 1, "inputPath"), RequireArg(args, 2, "outputPath")),
+        "repair-ydd" => Commands.RepairYdd(RequireArg(args, 1, "inputPath"), RequireArg(args, 2, "outputPath")),
         "gen-test-ytd" => Commands.GenTestYtd(RequireArg(args, 1, "outputPath")),
         _ => throw new ArgumentException($"Unknown command \"{args[0]}\"."),
     };
