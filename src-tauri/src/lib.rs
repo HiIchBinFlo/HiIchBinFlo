@@ -1,0 +1,34 @@
+pub mod commands;
+pub mod db;
+pub mod error;
+pub mod fs_utils;
+pub mod models;
+pub mod parsers;
+pub mod slot_system;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            if cfg!(debug_assertions) {
+                app.handle().plugin(
+                    tauri_plugin_log::Builder::default()
+                        .level(log::LevelFilter::Info)
+                        .build(),
+                )?;
+            }
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::project::project_create,
+            commands::project::project_open,
+            commands::project::project_save,
+            commands::import::import_source,
+            commands::export::export_project,
+            commands::assets::import_asset_file,
+            commands::assets::duplicate_asset_file,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
