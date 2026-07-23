@@ -4,10 +4,22 @@
 //! modding community for ped component and prop streaming assets:
 //!
 //!   mesh:    `<component>_<drawableId:03>_<r|u>.ydd`
-//!   texture: `<component>_diff_<drawableId:03>_<textureId:03>_<suffix>_<race>.ytd`
+//!   texture: `<component>_diff_<drawableId:03>_<variant>_<race>.ytd`
 //!   prop:    `p_<anchor>_<drawableId:03>_<r|u>.ydd` / matching `.ytd`
 //!
-//! e.g. `uppr_diff_000_000_a_uni.ytd`, `uppr_000_u.ydd`, `p_head_003_u.ydd`.
+//! e.g. `uppr_diff_000_a_uni.ytd`, `uppr_000_u.ydd`, `p_head_003_u.ydd`.
+//!
+//! `<variant>` is normally a letter (`a`, `b`, `c`, ...) identifying a color/
+//! texture variant of the same drawable — this is the real, empirically
+//! confirmed Rockstar/FiveM convention (e.g. `jbib_diff_000_a_uni.ytd`,
+//! `jbib_diff_000_b_uni.ytd`). An earlier version of this parser assumed a
+//! second *numeric* id in that slot (`<component>_diff_<id>_<textureId>_
+//! <suffix>_<race>.ytd`) — a guess that was never checked against a real
+//! pack and turned out to be wrong, silently skipping every texture file in
+//! a real ~4,900-file import. Both forms are still accepted (see
+//! `TEXTURE_COMPONENT_RE_LEGACY`/`TEXTURE_PROP_RE_LEGACY` below) in case some
+//! pack really does have an extra numeric segment, but the letter-variant
+//! form is tried first as the confirmed-real case.
 //!
 //! Packs that don't follow this convention are not silently misclassified:
 //! `parse_mesh_filename`/`parse_texture_filename` return `None` and the
@@ -33,10 +45,40 @@ static MESH_COMPONENT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)^([a-z]+)_(\d{1,3})_[ru]\.ydd$").unwrap());
 static MESH_PROP_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)^p_([a-z]+)_(\d{1,3})_[ru]\.ydd$").unwrap());
+
+// Real, empirically-confirmed form: <component>_diff_<id>_<letter-variant>_<race>.ytd
 static TEXTURE_COMPONENT_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?i)^([a-z]+)_diff_(\d{1,3})_(\d{1,3})_[a-z]_[a-z]+\.ytd$").unwrap());
+    Lazy::new(|| Regex::new(r"(?i)^([a-z]+)_diff_(\d{1,3})_([a-z]+)_[a-z]+\.ytd$").unwrap());
 static TEXTURE_PROP_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)^p_([a-z]+)_diff_(\d{1,3})_([a-z]+)_[a-z]+\.ytd$").unwrap());
+
+// Legacy/defensive form kept for packs that might genuinely have an extra
+// numeric texture id segment: <component>_diff_<id>_<numericTextureId>_<suffix>_<race>.ytd
+static TEXTURE_COMPONENT_RE_LEGACY: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)^([a-z]+)_diff_(\d{1,3})_(\d{1,3})_[a-z]_[a-z]+\.ytd$").unwrap());
+static TEXTURE_PROP_RE_LEGACY: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)^p_([a-z]+)_diff_(\d{1,3})_(\d{1,3})_[a-z]_[a-z]+\.ytd$").unwrap());
+
+/// Converts a texture variant tag into a stable, unique `u32` key used only
+/// for internal grouping/duplicate-detection (see `commands::import`) — it
+/// never needs to match any in-game numeric meaning. Plain digits parse
+/// directly; a lowercase letter sequence (the real convention: `a`, `b`, ...,
+/// `z`, `aa`, ...) is treated like a base-26 "spreadsheet column" number so
+/// every distinct tag maps to a distinct, deterministic id.
+fn variant_tag_to_id(tag: &str) -> Option<u32> {
+    if let Ok(n) = tag.parse::<u32>() {
+        return Some(n);
+    }
+    let mut value: u32 = 0;
+    for c in tag.chars() {
+        let lower = c.to_ascii_lowercase();
+        if !lower.is_ascii_lowercase() {
+            return None;
+        }
+        value = value * 26 + (lower as u32 - 'a' as u32);
+    }
+    Some(value)
+}
 
 /// Some FiveM addon-ped/clothing packs prefix every streamed filename with
 /// `<target-ped>_<resource-name>^` to guarantee uniqueness across resources
@@ -79,10 +121,26 @@ pub fn parse_texture_filename(file_name: &str) -> Option<ParsedTextureFilename> 
             component_key: caps[1].to_lowercase(),
             is_prop: true,
             drawable_id: caps[2].parse().ok()?,
-            texture_id: caps[3].parse().ok()?,
+            texture_id: variant_tag_to_id(&caps[3])?,
         });
     }
     if let Some(caps) = TEXTURE_COMPONENT_RE.captures(file_name) {
+        return Some(ParsedTextureFilename {
+            component_key: caps[1].to_lowercase(),
+            is_prop: false,
+            drawable_id: caps[2].parse().ok()?,
+            texture_id: variant_tag_to_id(&caps[3])?,
+        });
+    }
+    if let Some(caps) = TEXTURE_PROP_RE_LEGACY.captures(file_name) {
+        return Some(ParsedTextureFilename {
+            component_key: caps[1].to_lowercase(),
+            is_prop: true,
+            drawable_id: caps[2].parse().ok()?,
+            texture_id: caps[3].parse().ok()?,
+        });
+    }
+    if let Some(caps) = TEXTURE_COMPONENT_RE_LEGACY.captures(file_name) {
         return Some(ParsedTextureFilename {
             component_key: caps[1].to_lowercase(),
             is_prop: false,
@@ -171,7 +229,34 @@ mod tests {
     }
 
     #[test]
-    fn parses_component_texture_filenames() {
+    fn parses_component_texture_filenames_real_letter_variant_form() {
+        // The real, empirically-confirmed Rockstar/FiveM convention: a
+        // letter identifies the color/texture variant, not a second number.
+        let parsed = parse_texture_filename("uppr_diff_000_a_uni.ytd").unwrap();
+        assert_eq!(parsed.component_key, "uppr");
+        assert!(!parsed.is_prop);
+        assert_eq!(parsed.drawable_id, 0);
+        assert_eq!(parsed.texture_id, 0);
+
+        let parsed_b = parse_texture_filename("uppr_diff_000_b_uni.ytd").unwrap();
+        assert_eq!(parsed_b.texture_id, 1);
+        assert_ne!(parsed.texture_id, parsed_b.texture_id, "distinct variants must get distinct ids");
+    }
+
+    #[test]
+    fn parses_prop_texture_filenames_real_letter_variant_form() {
+        let parsed = parse_texture_filename("p_head_diff_003_c_whi.ytd").unwrap();
+        assert_eq!(parsed.component_key, "head");
+        assert!(parsed.is_prop);
+        assert_eq!(parsed.drawable_id, 3);
+        assert_eq!(parsed.texture_id, 2); // c = 3rd letter -> id 2
+    }
+
+    #[test]
+    fn parses_component_texture_filenames_legacy_double_numeric_form() {
+        // Kept for backward compatibility in case some pack really does
+        // have an extra numeric segment - not the confirmed-real form (see
+        // the letter-variant tests above and the module doc comment).
         let parsed = parse_texture_filename("uppr_diff_000_000_a_uni.ytd").unwrap();
         assert_eq!(parsed.component_key, "uppr");
         assert!(!parsed.is_prop);
@@ -180,7 +265,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_prop_texture_filenames() {
+    fn parses_prop_texture_filenames_legacy_double_numeric_form() {
         let parsed = parse_texture_filename("p_head_diff_003_001_a_whi.ytd").unwrap();
         assert_eq!(parsed.component_key, "head");
         assert!(parsed.is_prop);
@@ -207,12 +292,22 @@ mod tests {
 
     #[test]
     fn parses_texture_filenames_prefixed_with_a_streaming_uniqueness_tag() {
+        // The exact filename shape from a real user-reported pack (~4,900
+        // files) that this parser originally failed to recognize at all:
+        // every texture was skipped because of the now-corrected legacy
+        // double-numeric assumption, on top of the streaming-prefix issue.
         let parsed =
-            parse_texture_filename("mp_m_freemode_01_mp_m_creativyx_male^decl_diff_000_000_a_uni.ytd").unwrap();
+            parse_texture_filename("mp_m_freemode_01_mp_m_creativyx_male^decl_diff_000_a_uni.ytd").unwrap();
         assert_eq!(parsed.component_key, "decl");
         assert!(!parsed.is_prop);
         assert_eq!(parsed.drawable_id, 0);
         assert_eq!(parsed.texture_id, 0);
+
+        // Later letters in the alphabet, also seen in the same real pack.
+        let parsed_s =
+            parse_texture_filename("mp_m_freemode_01_mp_m_creativyx_male^decl_diff_021_s_uni.ytd").unwrap();
+        assert_eq!(parsed_s.drawable_id, 21);
+        assert_eq!(parsed_s.texture_id, 18); // 's' is the 19th letter -> id 18
     }
 
     #[test]

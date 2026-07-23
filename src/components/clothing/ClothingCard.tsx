@@ -23,7 +23,10 @@ export function ClothingCard({ item, selected, onClick, onDoubleClick }: Clothin
         selected && "border-primary ring-1 ring-primary",
       )}
     >
-      <div className="flex aspect-square items-center justify-center bg-muted">
+      {/* Fixed height, not aspect-square: a width-driven square would balloon
+          vertically without bound if the grid ever computes a single very
+          wide column (e.g. a transient 0-width measurement on first paint). */}
+      <div className="flex h-[168px] items-center justify-center bg-muted">
         {item.thumbnail ? (
           <img src={item.thumbnail} alt={item.name} className="h-full w-full object-cover" />
         ) : (
