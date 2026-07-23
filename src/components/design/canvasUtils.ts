@@ -8,6 +8,50 @@ export function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+/**
+ * Converts a pointer event's client coordinates into the canvas's own pixel
+ * space, accounting for `object-fit: contain` letterboxing.
+ *
+ * `canvas.getBoundingClientRect()` returns the element's CSS layout box —
+ * NOT the visually-rendered content area — so naively dividing by
+ * `rect.width`/`rect.height` is wrong for any canvas whose native aspect
+ * ratio doesn't exactly match its container's aspect ratio. Since these
+ * canvases sit in a fixed-height, full-width preview box, that's true for
+ * almost every non-square texture (and even most square ones, since the
+ * box itself usually isn't square) — without this correction, drags/clicks
+ * silently land in the wrong place. `scale` is uniform (object-fit: contain
+ * preserves aspect ratio, so scaleX === scaleY) — useful for sizing
+ * hit-test radii in canvas-pixel terms from a fixed on-screen pixel size.
+ */
+export function canvasPointerPosition(
+  e: { clientX: number; clientY: number },
+  canvas: HTMLCanvasElement,
+): { x: number; y: number; scale: number } {
+  const rect = canvas.getBoundingClientRect();
+  const boxAspect = rect.width / rect.height;
+  const contentAspect = canvas.width / canvas.height;
+
+  let contentLeft = rect.left;
+  let contentTop = rect.top;
+  let contentWidth = rect.width;
+  let contentHeight = rect.height;
+
+  if (boxAspect > contentAspect) {
+    contentWidth = rect.height * contentAspect;
+    contentLeft = rect.left + (rect.width - contentWidth) / 2;
+  } else if (boxAspect < contentAspect) {
+    contentHeight = rect.width / contentAspect;
+    contentTop = rect.top + (rect.height - contentHeight) / 2;
+  }
+
+  const scale = canvas.width / contentWidth;
+  return {
+    x: (e.clientX - contentLeft) * scale,
+    y: (e.clientY - contentTop) * scale,
+    scale,
+  };
+}
+
 /** Draws `img` into a freshly-sized canvas at `width`x`height`, stretching to fill. */
 export function drawStretched(img: HTMLImageElement, width: number, height: number): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
@@ -15,36 +59,6 @@ export function drawStretched(img: HTMLImageElement, width: number, height: numb
   canvas.height = height;
   const ctx = canvas.getContext("2d")!;
   ctx.drawImage(img, 0, 0, width, height);
-  return canvas;
-}
-
-/** Draws `img` into a `width`x`height` canvas, scaled to cover (crop overflow) or contain (letterbox). */
-export function drawFitted(
-  img: HTMLImageElement,
-  width: number,
-  height: number,
-  mode: "cover" | "contain" | "stretch",
-): HTMLCanvasElement {
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d")!;
-
-  if (mode === "stretch") {
-    ctx.drawImage(img, 0, 0, width, height);
-    return canvas;
-  }
-
-  const scale =
-    mode === "cover"
-      ? Math.max(width / img.width, height / img.height)
-      : Math.min(width / img.width, height / img.height);
-  const drawWidth = img.width * scale;
-  const drawHeight = img.height * scale;
-  const dx = (width - drawWidth) / 2;
-  const dy = (height - drawHeight) / 2;
-  ctx.clearRect(0, 0, width, height);
-  ctx.drawImage(img, dx, dy, drawWidth, drawHeight);
   return canvas;
 }
 

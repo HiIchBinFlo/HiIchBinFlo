@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { Loader2, Paintbrush, Pipette, Redo2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { loadImage } from "./canvasUtils";
+import { canvasPointerPosition, loadImage } from "./canvasUtils";
 
 interface PaintTabProps {
   sourcePngUrl: string;
@@ -49,11 +49,7 @@ export function PaintTab({ sourcePngUrl, onApply }: PaintTabProps) {
   }, [sourcePngUrl]);
 
   function canvasPointFromEvent(e: React.PointerEvent<HTMLCanvasElement>) {
-    const canvas = canvasRef.current!;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+    return canvasPointerPosition(e, canvasRef.current!);
   }
 
   function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -146,24 +142,28 @@ export function PaintTab({ sourcePngUrl, onApply }: PaintTabProps) {
   return (
     <div className="space-y-3">
       <div
-        className="flex h-56 items-center justify-center overflow-hidden rounded-md border border-border p-2"
+        className="relative flex h-56 items-center justify-center overflow-hidden rounded-md border border-border p-2"
         style={{
           backgroundImage: "repeating-conic-gradient(#2a2d35 0% 25%, #33363f 0% 50%)",
           backgroundSize: "16px 16px",
         }}
       >
-        {!ready ? (
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        ) : (
-          <canvas
-            ref={canvasRef}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            className="h-full w-full object-contain"
-            style={{ imageRendering: "pixelated", cursor: eyedropper ? "crosshair" : "cell", touchAction: "none" }}
-          />
-        )}
+        {/* Always mounted (not conditional on `ready`) — the load effect below sets this canvas's
+            width/height itself and needs the ref to already exist to do so. */}
+        <canvas
+          ref={canvasRef}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          className="h-full w-full object-contain"
+          style={{
+            imageRendering: "pixelated",
+            cursor: eyedropper ? "crosshair" : "cell",
+            touchAction: "none",
+            visibility: ready ? "visible" : "hidden",
+          }}
+        />
+        {!ready && <Loader2 className="absolute h-5 w-5 animate-spin text-muted-foreground" />}
       </div>
 
       <div className="grid grid-cols-3 gap-3">
