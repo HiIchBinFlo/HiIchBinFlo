@@ -1,0 +1,48 @@
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Vite
+.vite/
+*.tsbuildinfo
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/Cargo.lock.bak
+
+# Tauri generated
+src-tauri/gen/
+
+# Bundled sidecar binaries (built by scripts/publish-sidecar.mjs, see sidecar/README.md;
+# these are large self-contained .NET executables and must not be committed)
+src-tauri/binaries/
+
+# .NET sidecar build output
+sidecar/**/bin/
+sidecar/**/obj/
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
+
+# Project runtime data (user projects, caches, autosaves)
+/projects/
+/.cache/
+*.fcstudio-autosave
+
+# Test artifacts
+coverage/

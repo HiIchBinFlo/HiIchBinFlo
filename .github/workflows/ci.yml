@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  frontend:
+    name: Frontend (typecheck, lint, test, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
+
+  sidecar:
+    name: Sidecar (.NET build + smoke test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: dotnet build
+        working-directory: sidecar/CodeWalkerBridge
+        run: dotnet build
+      - name: Smoke test (probe, gen-test-ytd, inspect-ytd, repair-ytd, replace-texture, inspect-ydd/export-geometry error handling)
+        working-directory: sidecar/CodeWalkerBridge
+        run: |
+          dotnet run -- probe
+          dotnet run -- gen-test-ytd /tmp/ci-sample.ytd
+          dotnet run -- inspect-ytd /tmp/ci-sample.ytd --extract-dir /tmp/ci-extract
+          dotnet run -- repair-ytd /tmp/ci-sample.ytd /tmp/ci-repaired.ytd
+          dotnet run -- inspect-ytd /tmp/ci-repaired.ytd
+          # Design Studio write-back: replace a texture's pixel content with a
+          # different real DDS (reusing the one just extracted above) and
+          # confirm it reloads with the new dimensions/format under the same name.
+          dotnet run -- replace-texture /tmp/ci-sample.ytd test_diffuse /tmp/ci-extract/test_diffuse.dds /tmp/ci-replaced.ytd
+          dotnet run -- inspect-ytd /tmp/ci-replaced.ytd
+          # Feeding the wrong resource type must fail gracefully (ok:false), not crash.
+          dotnet run -- inspect-ydd /tmp/ci-sample.ytd
+          dotnet run -- export-geometry /tmp/ci-sample.ytd
+          dotnet run -- repair-ydd /tmp/ci-sample.ytd /tmp/ci-repaired.ydd
+
+  # cargo (check/clippy/test/build) all require the externalBin sidecar path
+  # declared in tauri.conf.json to exist on disk, even for `cargo check` -
+  # tauri-build validates it at build-script time. So every job touching
+  # src-tauri publishes the sidecar first via `npm run build:sidecar`.
+  backend:
+    name: Backend (cargo check, clippy, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libsoup-3.0-dev
+      - run: npm ci
+      - name: Publish sidecar (required by tauri-build's externalBin check)
+        run: npm run build:sidecar
+      - name: cargo check
+        working-directory: src-tauri
+        run: cargo check --all-targets
+      - name: cargo clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test
+
+  build-tauri:
+    name: Build Tauri app (release)
+    needs: [frontend, backend, sidecar]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libsoup-3.0-dev
+      - run: npm ci
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0

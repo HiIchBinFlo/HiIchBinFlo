@@ -1,0 +1,22 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capabilities granted to the main window: core APIs, native open/save dialogs for project/import/export path selection, and permission to run the bundled codewalker-bridge sidecar (real .ydd/.ytd decoding).",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "binaries/codewalker-bridge",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    }
+  ]
+}
