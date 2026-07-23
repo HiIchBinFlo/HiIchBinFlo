@@ -186,6 +186,25 @@ bar of empirical cross-validation. If mesh shapes ever look wrong against a
 real clothing pack, this is the first place to look — see
 `docs/FILE_FORMATS.md`.
 
+**This risk materialized once, in real testing (Phase 6):** opening the mesh
+preview for one item in a real ~700-item pack crashed the sidecar's JSON
+response with `.NET number values such as positive and negative infinity
+cannot be written as valid JSON`. Root cause: for that specific geometry, a
+vertex accessor call (or, separately, a degenerate/empty bounding box
+computed as min=+Infinity/max=-Infinity) produced a non-finite float, which
+standard JSON has no representation for. Fixed defensively in
+`Commands.cs::Finite()` — every float written into `ExportGeometry`'s
+positions/normals/UV arrays and `InspectYdd`'s bounding
+box/sphere-radius/LOD-distance fields is now clamped to `0f` if it isn't
+finite, rather than crashing or (worse) silently handing non-finite vertex
+positions to the Three.js preview, which would break its own bounding-sphere
+math. Not covered by an automated regression test — building a from-scratch
+`.ydd` fixture that reproduces a degenerate vertex declaration was already
+noted as infeasible in Phase 2 (see `GenTestYtd`'s doc comment for the same
+problem with `.ytd`); the fix was verified by re-running the full sidecar
+smoke sequence to confirm no regression, not by reproducing the exact
+degenerate case.
+
 ## Phase 4 — Mesh Editor, Custom Clothing Creator
 
 **Status: Complete, with a scope decision on raw vertex editing — see below.**

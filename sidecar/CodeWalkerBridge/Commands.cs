@@ -111,10 +111,10 @@ public static class Commands
 
             var lods = new List<LodInfo>
             {
-                new("high", d.FlagsHigh != 0, d.LodDistHigh),
-                new("med", d.FlagsMed != 0, d.LodDistMed),
-                new("low", d.FlagsLow != 0, d.LodDistLow),
-                new("vlow", d.FlagsVlow != 0, d.LodDistVlow),
+                new("high", d.FlagsHigh != 0, Finite(d.LodDistHigh)),
+                new("med", d.FlagsMed != 0, Finite(d.LodDistMed)),
+                new("low", d.FlagsLow != 0, Finite(d.LodDistLow)),
+                new("vlow", d.FlagsVlow != 0, Finite(d.LodDistVlow)),
             };
 
             var models = d.AllModels ?? Array.Empty<DrawableModel>();
@@ -143,7 +143,7 @@ public static class Commands
                 Vec3(d.BoundingBoxMin),
                 Vec3(d.BoundingBoxMax),
                 Vec3(d.BoundingCenter),
-                d.BoundingSphereRadius,
+                Finite(d.BoundingSphereRadius),
                 bones.Count,
                 bones,
                 lods,
@@ -232,18 +232,18 @@ public static class Commands
                 for (int v = 0; v < vertexCount; v++)
                 {
                     var p = vertexData.GetVector3((int)VertexSemantics.Position, v);
-                    positions[v * 3 + 0] = p.X;
-                    positions[v * 3 + 1] = p.Y;
-                    positions[v * 3 + 2] = p.Z;
+                    positions[v * 3 + 0] = Finite(p.X);
+                    positions[v * 3 + 1] = Finite(p.Y);
+                    positions[v * 3 + 2] = Finite(p.Z);
 
                     var n = vertexData.GetVector3((int)VertexSemantics.Normal, v);
-                    normals[v * 3 + 0] = n.X;
-                    normals[v * 3 + 1] = n.Y;
-                    normals[v * 3 + 2] = n.Z;
+                    normals[v * 3 + 0] = Finite(n.X);
+                    normals[v * 3 + 1] = Finite(n.Y);
+                    normals[v * 3 + 2] = Finite(n.Z);
 
                     var uv = vertexData.GetVector2((int)VertexSemantics.TexCoord0, v);
-                    uv0[v * 2 + 0] = uv.X;
-                    uv0[v * 2 + 1] = uv.Y;
+                    uv0[v * 2 + 0] = Finite(uv.X);
+                    uv0[v * 2 + 1] = Finite(uv.Y);
 
                     // "Bone assignments" (Phase 4): the local blend index with the
                     // highest blend weight, resolved through the geometry's BoneIds
@@ -600,7 +600,21 @@ public static class Commands
         return new GenTestYtdResult(true, outputPath, saved.Length);
     }
 
-    private static float[] Vec3(SharpDX.Vector3 v) => new[] { v.X, v.Y, v.Z };
+    private static float[] Vec3(SharpDX.Vector3 v) => new[] { Finite(v.X), Finite(v.Y), Finite(v.Z) };
+
+    /// <summary>
+    /// Some real files produce non-finite floats here (e.g. a degenerate/
+    /// empty bounding box computed as min=+Infinity/max=-Infinity when no
+    /// vertices ever updated it, or a vertex accessor reading a semantic
+    /// that isn't actually present for a given geometry - see the "one
+    /// unverified piece" note on <see cref="ExportGeometry"/>). Standard
+    /// JSON has no representation for NaN/Infinity at all - System.Text.Json
+    /// throws rather than silently emitting an invalid document - and even
+    /// if it didn't, passing Infinity/NaN vertex positions to the Three.js
+    /// preview would break its bounding-sphere computation. Zero is the
+    /// honest "no real data here" value in both cases, not a middle guess.
+    /// </summary>
+    private static float Finite(float v) => float.IsFinite(v) ? v : 0f;
 
     private static string SanitizeFileName(string? name)
     {
