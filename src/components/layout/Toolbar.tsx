@@ -1,8 +1,12 @@
+import { useState } from "react";
+import { toast } from "sonner";
 import {
   FolderOpen,
   FolderPlus,
+  Images,
   LayoutGrid,
   List,
+  Loader2,
   PlusCircle,
   Redo2,
   Save,
@@ -18,6 +22,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useProjectStore } from "@/stores/projectStore";
 import { useUiStore } from "@/stores/uiStore";
 import { cn } from "@/lib/utils";
+import { isTauri, tauriApi, TauriUnavailableError } from "@/lib/tauri";
 
 function ToolbarButton({
   label,
@@ -45,6 +50,8 @@ function ToolbarButton({
 export function Toolbar() {
   const project = useProjectStore((s) => s.project);
   const isDirty = useProjectStore((s) => s.isDirty);
+  const items = useProjectStore((s) => s.state.items);
+  const updateItem = useProjectStore((s) => s.updateItem);
   const undo = useProjectStore((s) => s.undo);
   const redo = useProjectStore((s) => s.redo);
   const canUndo = useProjectStore((s) => s.past.length > 0);
@@ -53,6 +60,31 @@ export function Toolbar() {
   const viewMode = useUiStore((s) => s.viewMode);
   const setViewMode = useUiStore((s) => s.setViewMode);
   const setDialog = useUiStore((s) => s.setDialog);
+
+  const [generatingThumbnails, setGeneratingThumbnails] = useState(false);
+
+  async function handleGenerateThumbnails() {
+    if (!project) return;
+    setGeneratingThumbnails(true);
+    try {
+      const report = await tauriApi.generateThumbnails(project.dbPath, items);
+      for (const [itemId, base64] of Object.entries(report.thumbnails)) {
+        updateItem(itemId, { thumbnail: `data:image/png;base64,${base64}` });
+      }
+      if (report.generated === 0 && report.errors.length === 0) {
+        toast.success("Every item already has a thumbnail (or has no texture to generate one from).");
+      } else if (report.errors.length > 0) {
+        toast.error(`Generated ${report.generated} thumbnail(s), ${report.errors.length} failed.`);
+      } else {
+        toast.success(`Generated ${report.generated} thumbnail(s).`);
+      }
+    } catch (err) {
+      const message = err instanceof TauriUnavailableError ? err.message : `Thumbnail generation failed: ${err}`;
+      toast.error(message);
+    } finally {
+      setGeneratingThumbnails(false);
+    }
+  }
 
   return (
     <div className="flex h-11 shrink-0 items-center gap-1 border-b border-border bg-card px-2">
@@ -89,6 +121,13 @@ export function Toolbar() {
         onClick={() => setDialog("validation", true)}
       >
         <ShieldCheck className="h-4 w-4" />
+      </ToolbarButton>
+      <ToolbarButton
+        label="Generate Thumbnails"
+        disabled={!project || generatingThumbnails || !isTauri()}
+        onClick={handleGenerateThumbnails}
+      >
+        {generatingThumbnails ? <Loader2 className="h-4 w-4 animate-spin" /> : <Images className="h-4 w-4" />}
       </ToolbarButton>
 
       <Separator orientation="vertical" className="mx-1 h-6" />

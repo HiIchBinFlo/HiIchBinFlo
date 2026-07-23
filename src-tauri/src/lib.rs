@@ -45,6 +45,7 @@ pub fn run() {
             commands::repair::refresh_asset_ref,
             commands::deep_validate::deep_validate_project,
             commands::texture_edit::apply_texture_edit,
+            commands::thumbnails::generate_thumbnails,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

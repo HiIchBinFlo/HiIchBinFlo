@@ -350,14 +350,65 @@ pixel data.
     replaces the texture's hue with a chosen color while keeping its
     existing shading/highlights, blendable by an intensity slider. The
     standard game-modding "recolor" technique, not a flat color fill.
-  - **Upload Image**: pick any image file, fit it into the texture's
-    original dimensions (cover/contain/stretch), preview, apply.
+  - **Upload Image**: place one or more images as freely draggable/resizable
+    "stickers" on the texture (not just an automatic fit) — add an image,
+    drag to move it, drag a corner handle to resize (aspect-locked), remove
+    the selected one. Whatever's visible on the canvas when "Apply" is
+    pressed is exactly what gets written back.
   - **Paint**: a real hand-painting canvas — brush color/size/opacity,
     eyedropper, undo/redo — pre-loaded with the item's current texture as
     the starting point.
 - [ ] **Mesh/shape editing** — still explicitly out of scope; Design Studio
       only ever changes pixels, never geometry. See Phase 4's "Why raw
       vertex editing is out of scope," which this doesn't revisit.
+
+### Real-world testing found three more real bugs
+
+Design Studio's canvas-based tabs and the drag/resize interaction were
+manually verified with a temporary Playwright-driven debug harness (not
+committed) before shipping, which caught two bugs that pure typechecking
+couldn't: `PaintTab`/`UploadImageTab` mounted their `<canvas>` only after a
+`ready` flag flipped true, but the load effect that flips it needed the
+canvas ref to already exist — a deadlock that would have left the Paint tab
+permanently stuck loading; and pointer coordinates were computed from
+`canvas.getBoundingClientRect()`, which is the CSS layout box, not the
+letterboxed content area `object-fit: contain` actually paints — so
+drags/clicks landed in the wrong place for almost any texture. Both fixed;
+see `src/components/design/canvasUtils.ts::canvasPointerPosition`.
+
+Testing against a real user's ~4,900-file pack after that caught two more,
+unrelated to Design Studio:
+
+1. **Every texture file was skipped on import.** The parser assumed
+   `<component>_diff_<id>_<numericTextureId>_<suffix>_<race>.ytd` — a guess
+   that was never checked against a real file. The actual, confirmed
+   Rockstar/FiveM convention uses a single *letter* as the variant
+   (`<component>_diff_<id>_<letter>_<race>.ytd`, e.g.
+   `decl_diff_000_a_uni.ytd`) — a different, simpler shape. Fixed in
+   `src-tauri/src/parsers/filename.rs` by matching the letter-variant form
+   first (mapped to a stable internal id via a base-26 scheme), keeping the
+   old double-numeric form as a defensive fallback.
+2. **The clothing grid showed cards with no visible name or badges** —
+   reproduced with a synthetic 678-item debug harness driven through
+   Playwright rather than guessed at. Root cause:
+   `src/components/clothing/ClothingGrid.tsx`'s row virtualizer estimated
+   each row's height as just the thumbnail, never measuring the actual
+   rendered row (which also includes the name/badge section below the
+   thumbnail) — so the badge/name text ended up visually covered by the
+   next row. Fixed by wiring up `@tanstack/react-virtual`'s dynamic
+   `measureElement` instead of a static estimate.
+
+### Batched thumbnail generation
+
+Real-pack testing also surfaced a genuine usability gap: importing 678 real
+items left every card showing the generic placeholder icon, since
+thumbnails were only ever generated one at a time via the Inspector's
+on-demand "Decode" action — impractical at real-pack scale. Added
+`generate_thumbnails` (`src-tauri/src/commands/thumbnails.rs`), the bulk
+complement: for every item missing a thumbnail with a present texture,
+decodes it through the sidecar with the same bounded concurrency as
+`deep_validate_project`, and applies the results onto each item. Exposed as
+a "Generate Thumbnails" button in the Toolbar.
 
 ---
 

@@ -78,6 +78,14 @@ export interface DeepValidationReport {
   issues: ValidationIssue[];
 }
 
+export interface GenerateThumbnailsReport {
+  generated: number;
+  skipped: number;
+  errors: string[];
+  /** item id -> base64 PNG (no `data:` URL prefix) */
+  thumbnails: Record<string, string>;
+}
+
 /** Thrown when a Tauri command is invoked outside of the desktop shell (e.g. `vite dev` in a browser). */
 export class TauriUnavailableError extends Error {
   constructor(command: string) {
@@ -257,5 +265,19 @@ export const tauriApi = {
   ): Promise<RepairResult> {
     requireTauri("apply_texture_edit");
     return invoke<RepairResult>("apply_texture_edit", { inputPath, textureName, editedPngBase64, outputPath });
+  },
+
+  /**
+   * Batched thumbnail generation: for every item that doesn't already have
+   * one and has a present texture, decodes it through the sidecar (bounded
+   * concurrency) and produces a small downsampled PNG — the bulk complement
+   * to the Inspector's per-item on-demand "Decode" thumbnail generation.
+   * Returns a map of item id -> base64 PNG; callers apply it onto each
+   * item's `thumbnail` field themselves (this command never touches the
+   * project's SQLite file).
+   */
+  async generateThumbnails(dbPath: string, items: ClothingDrawable[]): Promise<GenerateThumbnailsReport> {
+    requireTauri("generate_thumbnails");
+    return invoke<GenerateThumbnailsReport>("generate_thumbnails", { dbPath, items });
   },
 };

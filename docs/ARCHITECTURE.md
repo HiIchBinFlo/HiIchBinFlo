@@ -77,6 +77,7 @@ save/export is checked against. Both are fully unit tested; see
 | `refresh_asset_ref` | Recomputes an asset's size/hash after `repair_*` changes its bytes in place |
 | `deep_validate_project` | Phase 5: opt-in batched decode of every present mesh/texture in the project (bounded concurrency), vs. the on-demand per-item decode above |
 | `apply_texture_edit` | Phase 6: writes an edited image (Design Studio: recolor/upload/paint) onto a real texture inside a `.ytd`, verified before writing |
+| `generate_thumbnails` | Batched thumbnail generation for every item missing one (bounded concurrency) — the bulk complement to the Inspector's per-item on-demand decode, added after real-pack testing showed hundreds of generic-icon cards is a genuine usability problem |
 
 All commands return `Result<T, AppError>`; `AppError` serializes to a plain
 string the frontend surfaces via `sonner` toasts (`src/lib/tauri.ts`).
@@ -187,12 +188,14 @@ implementations for the same reason as the slot system above.
   fixture files — see `docs/FILE_FORMATS.md`), plus (Phase 5) end-to-end
   import and import→export integration tests and a large-synthetic-pack
   scale test, plus (Phase 6) `texture_encode`'s real round-trip test (Rust
-  encode → real sidecar decode, exact pixel match — see below). 34 unit + 15
-  integration tests as of Phase 6
+  encode → real sidecar decode, exact pixel match — see below), plus new
+  filename-parser tests added while fixing two real bugs found testing
+  against an actual ~4,900-file pack — see `docs/ROADMAP.md`'s Phase 6
+  section. 39 unit + 15 integration tests as of Phase 6
   (`repair_ytd`/`repair_ydd`/`refresh_asset_ref`/`deep_validate_project`/
-  `apply_texture_edit` are thin passthroughs to the sidecar with no
-  independent Rust-side logic to unit test — their correctness is the
-  sidecar smoke test below).
+  `apply_texture_edit`/`generate_thumbnails` are thin passthroughs to the
+  sidecar with no independent Rust-side logic to unit test — their
+  correctness is the sidecar smoke test below).
 - TypeScript: `npm run test` (Vitest) — slot system, mirroring the Rust suite's
   scenarios exactly (including the spec's own delete-id-2-of-5 example). The
   Design Studio's canvas-based pixel math (`src/components/design/

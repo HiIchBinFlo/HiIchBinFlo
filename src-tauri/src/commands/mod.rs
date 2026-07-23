@@ -7,4 +7,5 @@ pub mod preview;
 pub mod project;
 pub mod repair;
 pub mod texture_edit;
+pub mod thumbnails;
 pub mod validate;
