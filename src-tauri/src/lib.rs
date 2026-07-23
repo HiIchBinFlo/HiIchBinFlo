@@ -42,6 +42,7 @@ pub fn run() {
             commands::repair::repair_ytd,
             commands::repair::repair_ydd,
             commands::repair::refresh_asset_ref,
+            commands::deep_validate::deep_validate_project,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

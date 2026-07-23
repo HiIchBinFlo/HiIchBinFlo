@@ -75,6 +75,7 @@ save/export is checked against. Both are fully unit tested; see
 | `export_texture_png` / `copy_file` | Texture Viewer's "Export as PNG" (re-encode) / "Export as DDS" (verbatim copy) |
 | `repair_ytd` / `repair_ydd` | Write-back proof: re-serialize a real file through CodeWalker.Core, verified before writing |
 | `refresh_asset_ref` | Recomputes an asset's size/hash after `repair_*` changes its bytes in place |
+| `deep_validate_project` | Phase 5: opt-in batched decode of every present mesh/texture in the project (bounded concurrency), vs. the on-demand per-item decode above |
 
 All commands return `Result<T, AppError>`; `AppError` serializes to a plain
 string the frontend surfaces via `sonner` toasts (`src/lib/tauri.ts`).
@@ -137,10 +138,13 @@ implementations for the same reason as the slot system above.
 - Undo/redo snapshots are shallow (new arrays, not deep clones) since items are
   already treated immutably on every edit — an undo step is cheap regardless
   of collection size.
-- Import hashing (SHA-256 per asset file) is currently sequential. For very
-  large packs this is the most likely first bottleneck; parallelizing it
-  (e.g. with `rayon`) is tracked as Phase 5 work rather than premature
-  optimization in Phase 1.
+- Import hashing (SHA-256 per asset file) is parallelized with `rayon`
+  (Phase 5, `commands::import::copy_pending_items_parallel`): classification
+  and slot reservation stay sequential (cheap, and slot assignment is
+  inherently order-dependent), but the copy+hash step — the actual
+  bottleneck for large packs — runs across all of a resource's items at
+  once. See `docs/ROADMAP.md`'s Phase 5 section for the before/after and the
+  scale test that exercises it.
 
 ## Performance posture (Phase 3 additions)
 
@@ -152,16 +156,33 @@ implementations for the same reason as the slot system above.
   `ClothingDrawable.thumbnail`) and downsampled before storage, not
   regenerated on every render and not stored at full resolution.
 
+## Performance posture (Phase 5 additions)
+
+- Import's copy+hash step is parallelized with `rayon` (see above) — the one
+  concrete "will this hold up at 20k+ files" question this project could
+  actually test without a real 20k-file pack in hand:
+  `src-tauri/tests/large_pack_import_perf_test.rs` builds and imports a
+  synthetic ~9,600-file pack and asserts both correctness and a generous
+  wall-clock ceiling.
+- Deep validation (`deep_validate_project`) is deliberately *not* parallelized
+  without bound the way import copy/hash is: each check spawns a real .NET
+  sidecar subprocess, so concurrency is capped
+  (`MAX_CONCURRENT_SIDECAR_CALLS = 8`) rather than firing off one process per
+  file at once — the failure mode for an unbounded version would be
+  resource exhaustion on large projects, not just slowness.
+
 ## Testing
 
 - Rust: `cargo test` in `src-tauri/` — slot system, DB round-trip, filename
   parsing, `fxmanifest.lua` parse/generate round-trip, generic XML flattening,
   validation logic, the RSC7 container codec, and BC1-7 texture decoding
   (unit tests plus integration tests cross-validated against real, committed
-  fixture files — see `docs/FILE_FORMATS.md`). 31 unit + 6 integration tests
-  as of Phase 4 (`repair_ytd`/`repair_ydd`/`refresh_asset_ref` are thin
-  passthroughs to the sidecar with no independent Rust-side logic to unit
-  test — their correctness is the sidecar smoke test below).
+  fixture files — see `docs/FILE_FORMATS.md`), plus (Phase 5) end-to-end
+  import and import→export integration tests and a large-synthetic-pack
+  scale test. 32 unit + 15 integration tests as of Phase 5
+  (`repair_ytd`/`repair_ydd`/`refresh_asset_ref`/`deep_validate_project` are
+  thin passthroughs to the sidecar with no independent Rust-side logic to
+  unit test — their correctness is the sidecar smoke test below).
 - TypeScript: `npm run test` (Vitest) — slot system, mirroring the Rust suite's
   scenarios exactly (including the spec's own delete-id-2-of-5 example).
 - `codewalker-bridge`: no separate unit test project (it's a thin wrapper

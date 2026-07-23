@@ -1,4 +1,5 @@
 pub mod assets;
+pub mod deep_validate;
 pub mod export;
 pub mod import;
 pub mod inspect;

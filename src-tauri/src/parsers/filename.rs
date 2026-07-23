@@ -79,17 +79,24 @@ pub fn parse_texture_filename(file_name: &str) -> Option<ParsedTextureFilename> 
 /// Best-effort gender detection from a path: looks for `female`/`_f_`/`mp_f_`
 /// vs `male`/`_m_`/`mp_m_` markers anywhere in the path components.
 /// Returns `None` when the path gives no signal either way.
+///
+/// Female markers are checked first and short-circuit: `"female"` contains
+/// `"male"` as a substring, so a naive "check both, require exactly one
+/// match" approach (the original implementation) treated every plain
+/// `female/` folder as ambiguous and silently defaulted callers to Male —
+/// caught by `large_pack_import_perf_test.rs` importing a pack laid out
+/// with literal `male/`/`female/` folders, a very common real convention.
 pub fn detect_gender_from_path(path: &str) -> Option<crate::models::Gender> {
     let lower = path.to_lowercase();
     let female_markers = ["female", "mp_f_", "_f_"];
     let male_markers = ["male", "mp_m_", "_m_"];
-    let is_female = female_markers.iter().any(|m| lower.contains(m));
-    let is_male = male_markers.iter().any(|m| lower.contains(m));
-    match (is_male, is_female) {
-        (true, false) => Some(crate::models::Gender::Male),
-        (false, true) => Some(crate::models::Gender::Female),
-        _ => None,
+    if female_markers.iter().any(|m| lower.contains(m)) {
+        return Some(crate::models::Gender::Female);
     }
+    if male_markers.iter().any(|m| lower.contains(m)) {
+        return Some(crate::models::Gender::Male);
+    }
+    None
 }
 
 pub const PED_COMPONENT_KEYS: &[(&str, u32)] = &[
@@ -181,5 +188,15 @@ mod tests {
             Some(crate::models::Gender::Male)
         );
         assert_eq!(detect_gender_from_path("packs/stream/uppr_000_u.ydd"), None);
+    }
+
+    #[test]
+    fn plain_female_folder_is_not_shadowed_by_the_male_substring_it_contains() {
+        // Regression test: "female" contains "male" as a substring, which
+        // used to make this case look ambiguous and silently default to Male.
+        assert_eq!(
+            detect_gender_from_path("packs/female/stream/uppr_000_u.ydd"),
+            Some(crate::models::Gender::Female)
+        );
     }
 }

@@ -7,6 +7,7 @@ use crate::models::{
 use crate::parsers::{filename as fname, fxmanifest};
 use crate::slot_system::SlotTable;
 use chrono::Utc;
+use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -218,6 +219,51 @@ fn copy_into_assets(
     fs_utils::asset_ref(&dest_absolute, &dest_relative)
 }
 
+/// A drawable that has passed slot reservation and just needs its files
+/// copied into project storage (the I/O- and hashing-heavy part of import,
+/// and the part that's safe to parallelize since each item's files are
+/// independent of every other item's).
+struct PendingItem {
+    item_id: String,
+    drawable_id: u32,
+    is_prop: bool,
+    component_id: u32,
+    gender: Gender,
+    dlc_id: String,
+    label: &'static str,
+    mesh_file: (PathBuf, String),
+    texture_files: Vec<(u32, (PathBuf, String))>,
+}
+
+/// Copies every pending item's mesh + texture files into project storage
+/// (including the per-file SHA-256 hash) in parallel across items. This is
+/// the actual bottleneck for large packs — classification and slot
+/// reservation are cheap in-memory work, but hashing tens of thousands of
+/// files sequentially is not (see docs/ARCHITECTURE.md's Performance
+/// posture section).
+fn copy_pending_items_parallel(
+    pending: &[PendingItem],
+    assets_root: &Path,
+    resource_name: &str,
+) -> Vec<AppResult<(crate::models::BinaryAssetRef, Vec<TextureVariant>)>> {
+    pending
+        .par_iter()
+        .map(|p| {
+            let mesh_asset = copy_into_assets(&p.mesh_file, assets_root, resource_name)?;
+            let mut textures = Vec::with_capacity(p.texture_files.len());
+            for (texture_id, tex_file) in &p.texture_files {
+                let asset = copy_into_assets(tex_file, assets_root, resource_name)?;
+                textures.push(TextureVariant {
+                    texture_id: *texture_id,
+                    name: format!("Variant {texture_id}"),
+                    file: Some(asset),
+                });
+            }
+            Ok((mesh_asset, textures))
+        })
+        .collect()
+}
+
 fn scan_resource_root(
     resource_root: &Path,
     assets_root: &Path,
@@ -245,9 +291,9 @@ fn scan_resource_root(
         });
     }
 
-    let now = Utc::now().to_rfc3339();
+    let mut pending = Vec::new();
     for ((gender, is_prop, component_id, drawable_id), accum) in acc.drawables {
-        let Some(mesh_file) = accum.mesh.as_ref() else {
+        let Some(mesh_file) = accum.mesh else {
             for (_, (_, rel)) in accum.textures {
                 acc.warnings.push(ImportIssue {
                     file: rel,
@@ -273,17 +319,6 @@ fn scan_resource_root(
             continue;
         }
 
-        let mesh_asset = copy_into_assets(mesh_file, assets_root, &resource_name)?;
-        let mut textures = Vec::new();
-        for (texture_id, tex_file) in &accum.textures {
-            let asset = copy_into_assets(tex_file, assets_root, &resource_name)?;
-            textures.push(TextureVariant {
-                texture_id: *texture_id,
-                name: format!("Variant {texture_id}"),
-                file: Some(asset),
-            });
-        }
-
         let label = if is_prop {
             fname::PED_PROP_KEYS
                 .iter()
@@ -298,15 +333,32 @@ fn scan_resource_root(
                 .unwrap_or("component")
         };
 
-        items.push(ClothingDrawable {
-            id: item_id,
+        pending.push(PendingItem {
+            item_id,
             drawable_id,
-            item_type: if is_prop { ItemType::Prop } else { ItemType::Component },
+            is_prop,
             component_id,
             gender,
-            dlc: dlc_id.clone(),
-            name: format!("{label} #{drawable_id}"),
-            category: label.to_string(),
+            dlc_id: dlc_id.clone(),
+            label,
+            mesh_file,
+            texture_files: accum.textures.into_iter().collect(),
+        });
+    }
+
+    let copy_results = copy_pending_items_parallel(&pending, assets_root, &resource_name);
+    let now = Utc::now().to_rfc3339();
+    for (p, result) in pending.into_iter().zip(copy_results) {
+        let (mesh_asset, textures) = result?;
+        items.push(ClothingDrawable {
+            id: p.item_id,
+            drawable_id: p.drawable_id,
+            item_type: if p.is_prop { ItemType::Prop } else { ItemType::Component },
+            component_id: p.component_id,
+            gender: p.gender,
+            dlc: p.dlc_id,
+            name: format!("{} #{}", p.label, p.drawable_id),
+            category: p.label.to_string(),
             description: String::new(),
             tags: Vec::new(),
             lod: LodLevel::High,
@@ -464,8 +516,9 @@ fn scan_loose_files(paths: &[PathBuf], assets_root: &Path) -> AppResult<ImportRe
         });
     }
 
+    let mut pending = Vec::new();
     for ((gender, is_prop, component_id, drawable_id), accum) in drawables {
-        let Some(mesh_file) = accum.mesh.as_ref() else { continue };
+        let Some(mesh_file) = accum.mesh else { continue };
         let item_id = Uuid::new_v4().to_string();
         let key = SlotTable::key(gender.as_str(), if is_prop { "prop" } else { "component" }, component_id);
         if let Err(err) = slot_table.reserve_exact(&key, drawable_id, &item_id) {
@@ -475,24 +528,30 @@ fn scan_loose_files(paths: &[PathBuf], assets_root: &Path) -> AppResult<ImportRe
             });
             continue;
         }
-        let mesh_asset = copy_into_assets(mesh_file, assets_root, &resource_name)?;
-        let mut textures = Vec::new();
-        for (texture_id, tex_file) in &accum.textures {
-            let asset = copy_into_assets(tex_file, assets_root, &resource_name)?;
-            textures.push(TextureVariant {
-                texture_id: *texture_id,
-                name: format!("Variant {texture_id}"),
-                file: Some(asset),
-            });
-        }
-        items.push(ClothingDrawable {
-            id: item_id,
+        pending.push(PendingItem {
+            item_id,
             drawable_id,
-            item_type: if is_prop { ItemType::Prop } else { ItemType::Component },
+            is_prop,
             component_id,
             gender,
-            dlc: dlc_id.clone(),
-            name: format!("Item #{drawable_id}"),
+            dlc_id: dlc_id.clone(),
+            label: "item",
+            mesh_file,
+            texture_files: accum.textures.into_iter().collect(),
+        });
+    }
+
+    let copy_results = copy_pending_items_parallel(&pending, assets_root, &resource_name);
+    for (p, result) in pending.into_iter().zip(copy_results) {
+        let (mesh_asset, textures) = result?;
+        items.push(ClothingDrawable {
+            id: p.item_id,
+            drawable_id: p.drawable_id,
+            item_type: if p.is_prop { ItemType::Prop } else { ItemType::Component },
+            component_id: p.component_id,
+            gender: p.gender,
+            dlc: p.dlc_id,
+            name: format!("Item #{}", p.drawable_id),
             category: String::new(),
             description: String::new(),
             tags: Vec::new(),

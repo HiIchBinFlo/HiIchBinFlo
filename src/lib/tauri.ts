@@ -72,6 +72,12 @@ export interface RepairResult {
   outputBytes: number;
 }
 
+export interface DeepValidationReport {
+  meshesChecked: number;
+  texturesChecked: number;
+  issues: ValidationIssue[];
+}
+
 /** Thrown when a Tauri command is invoked outside of the desktop shell (e.g. `vite dev` in a browser). */
 export class TauriUnavailableError extends Error {
   constructor(command: string) {
@@ -222,5 +228,17 @@ export const tauriApi = {
   async refreshAssetRef(dbPath: string, relativePath: string): Promise<BinaryAssetRef> {
     requireTauri("refresh_asset_ref");
     return invoke<BinaryAssetRef>("refresh_asset_ref", { dbPath, relativePath });
+  },
+
+  /**
+   * Phase 5: opt-in "deep validate everything" — actually decodes every
+   * present mesh/texture in the project through the sidecar (bounded
+   * concurrency on the Rust side), unlike the Inspector's per-item on-demand
+   * decode. Can take a while on a large project; callers should show
+   * progress/a busy state rather than call this implicitly.
+   */
+  async deepValidateProject(dbPath: string, items: ClothingDrawable[]): Promise<DeepValidationReport> {
+    requireTauri("deep_validate_project");
+    return invoke<DeepValidationReport>("deep_validate_project", { dbPath, items });
   },
 };

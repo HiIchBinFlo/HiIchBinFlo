@@ -8,10 +8,13 @@ Built with Tauri (Rust) + React + TypeScript + Zustand + SQLite, plus a small
 bundled .NET sidecar (`sidecar/CodeWalkerBridge`) wrapping the real
 CodeWalker.Core library for genuine `.ydd`/`.ytd` decoding.
 
-> **Status: Phases 1-4 complete.** See [docs/ROADMAP.md](docs/ROADMAP.md) for
-> what's implemented today vs. planned (including one correction to an
-> earlier version of that document), and [docs/FILE_FORMATS.md](docs/FILE_FORMATS.md)
-> for an honest breakdown of what is and isn't parsed at a binary level.
+> **Status: Phases 1-5 complete**, except packaged installers (deliberately
+> not built — see `docs/ROADMAP.md`'s Phase 5). See
+> [docs/ROADMAP.md](docs/ROADMAP.md) for what's implemented today vs. planned
+> (including two documented corrections to earlier versions of that
+> document — one in Phase 4, one a real bug Phase 5's scale test caught),
+> and [docs/FILE_FORMATS.md](docs/FILE_FORMATS.md) for an honest breakdown of
+> what is and isn't parsed at a binary level.
 
 ## Why this exists
 
@@ -91,13 +94,15 @@ src/                    React frontend
 
 src-tauri/               Rust backend
   src/
-    commands/            Tauri commands: project, import, export, assets, validate, inspect, preview, repair
+    commands/            Tauri commands: project, import, export, assets, validate, inspect, preview, repair, deep_validate
     parsers/             filename.rs, fxmanifest.rs, meta_xml.rs, rage_resource.rs (RSC7 codec)
     sidecar.rs            Invokes the codewalker-bridge sidecar, parses its JSON output
     texture_decode.rs      BC1-7 DDS decode -> PNG/thumbnail, native Rust
     db.rs                 SQLite schema + CRUD for .fcstudio project files
     slot_system.rs         Authoritative Rust mirror of src/lib/slotSystem.ts
     models.rs              Domain model shared over the Tauri IPC boundary
+  tests/                        Integration tests: import, import->export round trip, large-pack scale test,
+                                 RSC7 fixture, BC1 texture fixture
   tests/fixtures/              Real RSC7 (sample.ytd) and BC1 DDS (sample_bc1.dds) fixtures
 
 sidecar/CodeWalkerBridge/    .NET 8 sidecar wrapping CodeWalker.Core for real .ydd/.ytd decoding

@@ -244,15 +244,65 @@ rather than an unproven one.
 
 ## Phase 5 — Optimization, Testing, Release
 
-**Status: Not started.** Phases 1-4 ship with unit/integration tests for the
-highest-risk logic (slot system, validation, db round-trip, parsers, RSC7
-container codec, BC1-7 texture decode) on both sides of the IPC boundary,
-plus sidecar smoke tests (including the repair/write-back path), and a CI
-workflow (`.github/workflows/ci.yml`) that runs all of it. Broader
-integration/E2E tests, import/export performance profiling against real
-20k+ file packs, parallelized hashing, a batched deep-validation pass (see
-Phase 2 above), bundling a real HDRI asset (see Phase 3 above), and packaged
-releases are Phase 5 work.
+**Status: Optimization and testing complete. Packaged releases deliberately
+not built — see below.**
+
+- [x] **Parallelized import hashing/copy** (`commands::import::
+      copy_pending_items_parallel`, using `rayon`): classification and slot
+      reservation stay sequential (they're cheap and slot reservation is
+      inherently order-dependent), but the actual file-copy + SHA-256-hash
+      step — the real bottleneck for large packs — now runs across all of a
+      resource's items in parallel. Slot assignment is unaffected: it still
+      happens before any parallel work starts, so ids are exactly as
+      deterministic as before.
+- [x] **Large-pack scale test** (`src-tauri/tests/large_pack_import_perf_test.rs`):
+      builds and imports a synthetic ~9,600-file pack (every ped component
+      and prop track, both genders, `IDS_PER_TRACK` drawables each) end to
+      end through the real `import_source` entry point, asserting both
+      correctness at scale and a generous wall-clock regression-guard
+      ceiling — not a tight benchmark, but enough to catch an accidental
+      quadratic-time regression.
+- [x] **Broader integration/E2E tests** — `import_source` and `export_project`
+      had zero integration-level tests before Phase 5 (only their building
+      blocks were unit tested). Added:
+      `src-tauri/tests/import_integration_test.rs` (folder/zip/loose-file
+      import, duplicate-id and orphan-texture handling, real files verified
+      on disk with real hashes) and
+      `src-tauri/tests/import_export_round_trip_test.rs` (import a real pack
+      → export it as a Resource folder / Zip → verify the output files and
+      `fxmanifest.lua` content, plus a "missing asset fails loudly instead of
+      writing a broken pack" case).
+- [x] **A real bug the scale test caught**: `parsers::filename::
+      detect_gender_from_path` silently misclassified every plain `female/`
+      folder as Male, because `"female"` contains `"male"` as a substring —
+      the "must match exactly one of male/female" check saw both markers hit
+      and fell through to its ambiguous case. This had shipped since Phase 1;
+      the existing unit tests only ever exercised `mp_f_`/`_f_`-style markers,
+      never a bare `female/` folder (an extremely common real convention).
+      Fixed by checking the female markers first and short-circuiting — see
+      the regression test
+      `plain_female_folder_is_not_shadowed_by_the_male_substring_it_contains`.
+      Exactly the kind of thing "test at 9,600-file scale with a realistic
+      folder layout" catches and a handful of hand-picked unit tests don't.
+- [x] **Batched, opt-in deep-validation pass** (`deep_validate_project`,
+      `src-tauri/src/commands/deep_validate.rs`): the complement to Phase 2's
+      deliberately-on-demand-per-item decode. Actually runs every present
+      mesh/texture in the project through the sidecar's real decode path —
+      not just the one item currently open in the Inspector — bounded to
+      `MAX_CONCURRENT_SIDECAR_CALLS` (8) concurrent subprocesses at a time so
+      a large project doesn't try to spawn thousands of .NET processes at
+      once. Exposed as a "Deep Validate" button in the Validation dialog;
+      results merge into the same issue list as the always-on structural
+      checks.
+- [ ] **HDRI (image-based) lighting** — still deferred; see Phase 3's "Why not
+      HDRI" for the reasoning (bundling a real, licensed `.hdr` asset is a
+      content-acquisition task, not a code task, and procedural lighting
+      remains honestly labeled as such).
+- [ ] **Packaged releases / installers** — deliberately not built in this
+      phase, per explicit instruction: ship the code to git and let it be
+      tested by running it directly, not via a built installer. `npm run
+      tauri build` remains the documented way to produce one when that's
+      wanted; nothing about Phase 5's other work changes how it behaves.
 
 ---
 
