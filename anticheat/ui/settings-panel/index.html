@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Anti-Cheat Settings</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app" class="hidden">
+  <div class="panel">
+    <header class="panel-header">
+      <div class="brand">
+        <span class="brand-icon">&#9673;</span>
+        <span class="brand-title">Anti-Cheat</span>
+      </div>
+      <div class="steps">
+        <button class="step-btn active" data-step="1">1 · Protection</button>
+        <button class="step-btn" data-step="2">2 · Advanced</button>
+      </div>
+      <button id="closeBtn" class="close-btn" title="Close (ESC)">&times;</button>
+    </header>
+
+    <div class="panel-body">
+      <!-- STEP 1 -->
+      <section id="step1" class="step">
+        <nav class="category-nav" id="categoryNav"></nav>
+        <div class="content" id="step1Content"></div>
+      </section>
+
+      <!-- STEP 2 -->
+      <section id="step2" class="step hidden">
+        <div class="content advanced-content" id="step2Content"></div>
+      </section>
+    </div>
+
+    <footer class="panel-footer">
+      <div class="footer-status" id="footerStatus">Ready</div>
+      <div class="footer-actions">
+        <button id="resetBtn" class="btn ghost">Discard changes</button>
+        <button id="saveBtn" class="btn primary">Save &amp; Apply</button>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
