@@ -53,6 +53,24 @@ Tauri's sidecar naming convention. It is **not** committed to git (see
 | `inspect-ytd <path> [--extract-dir <dir>]` | Decode a `.ytd`: texture name/dimensions/format/mip levels; optionally extract each as a real `.dds` file |
 | `inspect-ydd <path>` | Decode a `.ydd`: per-drawable bounding box, LOD presence/distances, bone list, geometry/vertex/triangle counts, embedded texture dictionary |
 | `gen-test-ytd <outputPath>` | Dev/test utility: builds and saves a small but real, valid `.ytd` (used to produce `src-tauri/tests/fixtures/sample.ytd` — see that directory for why) |
+| `xml-to-ycd <xmlPath> <outputPath>` | Compile a CodeWalker Clip Dictionary XML into a binary `.ycd` animation, and re-read it to self-verify before reporting success |
+| `ycd-to-xml <ycdPath> <outputPath>` | Decompile a binary `.ycd` back to Clip Dictionary XML (inspection / round-trip testing) |
+| `dump-skeleton <path> <outputPath>` | Dump a ped skeleton's rest pose (name, tag, parent, translation/rotation/scale per bone) from a `.yft`, `.ydd` or `.ydr` to JSON |
+
+### Why the animation commands live here
+
+The last three commands serve
+[`fivem-animation-converter/`](../fivem-animation-converter/README.md), which
+converts an FBX animation into a FiveM-ready `.ycd`. That pipeline runs in
+Python and Blender, but the final XML → binary step genuinely needs
+CodeWalker.Core: **neither Blender nor Sollumz can write a binary `.ycd`** —
+Sollumz's entire GTA I/O surface is CodeWalker XML. A `.ycd`'s frame data is a
+packed bit stream whose layout is undocumented, and `CodeWalker.Core` already
+builds it correctly (`Sequence.BuildData()`, reached from
+`Animation.GetParts()` during serialisation). Rather than add a second
+CodeWalker.Core wrapper to this repository, the converter reuses this sidecar.
+See `fivem-animation-converter/docs/ANIMATION_PIPELINE.md` for the full
+research, with source citations.
 
 Deliberately NOT implemented yet (tracked as later-phase work, not silently
 faked): PNG/thumbnail conversion (would need either a cross-platform-unsafe

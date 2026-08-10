@@ -600,6 +600,193 @@ public static class Commands
         return new GenTestYtdResult(true, outputPath, saved.Length);
     }
 
+
+    // ------------------------------------------------------------------------
+    // Animation (.ycd) support
+    //
+    // Why this lives here rather than in the Python converter: a .ycd's frame
+    // data is a packed bit stream (Sequence.Data) with per-channel data offsets,
+    // frame strides and bit offsets. CodeWalker.Core builds that itself -
+    // Sequence.BuildData() is reached from Animation.GetParts() during resource
+    // serialisation - so producing correct Clip Dictionary XML is sufficient,
+    // and reimplementing the packer in Python would be guesswork against an
+    // undocumented layout.
+    // ------------------------------------------------------------------------
+
+    /// <summary>
+    /// Compile a CodeWalker Clip Dictionary XML document into a binary .ycd.
+    /// This is the final step of the FBX -> FiveM animation pipeline.
+    /// </summary>
+    public static XmlToYcdResult XmlToYcd(string xmlPath, string outputPath)
+    {
+        if (!File.Exists(xmlPath))
+        {
+            return new XmlToYcdResult(false, $"File not found: {xmlPath}", null, 0, 0, 0);
+        }
+
+        YcdFile ycd;
+        try
+        {
+            var doc = new System.Xml.XmlDocument();
+            doc.Load(xmlPath);
+            ycd = XmlYcd.GetYcd(doc);
+        }
+        catch (Exception ex)
+        {
+            return new XmlToYcdResult(false, $"Could not read the clip dictionary XML: {ex.Message}", null, 0, 0, 0);
+        }
+
+        if (ycd?.ClipDictionary == null)
+        {
+            return new XmlToYcdResult(false, "The XML did not produce a clip dictionary. Is the root element <ClipDictionary>?", null, 0, 0, 0);
+        }
+
+        int clipCount = ycd.ClipMap?.Count ?? 0;
+        int animCount = ycd.AnimMap?.Count ?? 0;
+        if (clipCount == 0 || animCount == 0)
+        {
+            return new XmlToYcdResult(false, $"The clip dictionary is empty (clips: {clipCount}, animations: {animCount}).", null, 0, clipCount, animCount);
+        }
+
+        byte[] data;
+        try
+        {
+            data = ycd.Save();
+        }
+        catch (Exception ex)
+        {
+            return new XmlToYcdResult(false, $"Failed to build the .ycd resource: {ex.Message}", null, 0, clipCount, animCount);
+        }
+
+        // Self-verification: read our own output back before claiming success,
+        // so a structurally broken file is reported here rather than in-game.
+        try
+        {
+            var reloaded = RpfFile.GetResourceFile<YcdFile>(data);
+            if ((reloaded.ClipMap?.Count ?? 0) != clipCount)
+            {
+                return new XmlToYcdResult(false,
+                    $"Self-verification failed: wrote {clipCount} clips but read back {reloaded.ClipMap?.Count ?? 0}.",
+                    null, data.Length, clipCount, animCount);
+            }
+        }
+        catch (Exception ex)
+        {
+            return new XmlToYcdResult(false, $"Self-verification failed - the generated .ycd could not be re-read: {ex.Message}", null, data.Length, clipCount, animCount);
+        }
+
+        var dir = Path.GetDirectoryName(outputPath);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        File.WriteAllBytes(outputPath, data);
+
+        return new XmlToYcdResult(true, null, outputPath, data.Length, clipCount, animCount);
+    }
+
+    /// <summary>
+    /// Decompile a binary .ycd back to Clip Dictionary XML. Used to inspect
+    /// reference animations and to round-trip test the converter's own output.
+    /// </summary>
+    public static YcdToXmlResult YcdToXml(string ycdPath, string outputPath)
+    {
+        if (!File.Exists(ycdPath))
+        {
+            return new YcdToXmlResult(false, $"File not found: {ycdPath}", null, 0, 0);
+        }
+
+        YcdFile ycd;
+        try
+        {
+            ycd = RpfFile.GetResourceFile<YcdFile>(File.ReadAllBytes(ycdPath));
+        }
+        catch (Exception ex)
+        {
+            return new YcdToXmlResult(false, $"Not a valid .ycd resource: {ex.Message}", null, 0, 0);
+        }
+
+        string xml = YcdXml.GetXml(ycd);
+        var dir = Path.GetDirectoryName(outputPath);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        File.WriteAllText(outputPath, xml);
+
+        return new YcdToXmlResult(true, null, outputPath, ycd.ClipMap?.Count ?? 0, ycd.AnimMap?.Count ?? 0);
+    }
+
+    /// <summary>
+    /// Dump a ped skeleton's rest pose from a .yft (fragment) or .ydd (drawable
+    /// dictionary) to JSON, for use as the converter's retarget target.
+    ///
+    /// The caller supplies a file from their own GTA V installation; nothing of
+    /// the sort is redistributed with this project.
+    /// </summary>
+    public static DumpSkeletonResult DumpSkeleton(string path, string outputPath)
+    {
+        if (!File.Exists(path))
+        {
+            return new DumpSkeletonResult(false, $"File not found: {path}", null, null, null);
+        }
+
+        byte[] data = File.ReadAllBytes(path);
+        Skeleton? skeleton = null;
+        string ext = Path.GetExtension(path).ToLowerInvariant();
+
+        try
+        {
+            if (ext == ".yft")
+            {
+                var yft = RpfFile.GetResourceFile<YftFile>(data);
+                skeleton = yft?.Fragment?.Drawable?.Skeleton;
+            }
+            else if (ext == ".ydd")
+            {
+                var ydd = RpfFile.GetResourceFile<YddFile>(data);
+                skeleton = ydd?.Drawables?.FirstOrDefault(d => d?.Skeleton?.Bones?.Items?.Length > 0)?.Skeleton;
+            }
+            else if (ext == ".ydr")
+            {
+                var ydr = RpfFile.GetResourceFile<YdrFile>(data);
+                skeleton = ydr?.Drawable?.Skeleton;
+            }
+            else
+            {
+                return new DumpSkeletonResult(false, $"Unsupported file type \"{ext}\". Use a .yft, .ydd or .ydr.", null, null, null);
+            }
+        }
+        catch (Exception ex)
+        {
+            return new DumpSkeletonResult(false, $"Could not read {Path.GetFileName(path)}: {ex.Message}", null, null, null);
+        }
+
+        var items = skeleton?.Bones?.Items;
+        if (items == null || items.Length == 0)
+        {
+            return new DumpSkeletonResult(false, $"{Path.GetFileName(path)} contains no skeleton. Ped fragments such as mp_m_freemode_01.yft do.", null, null, null);
+        }
+
+        var bones = items.Select(b => new SkeletonBone(
+            b.Name ?? string.Empty,
+            b.Tag,
+            b.Index,
+            b.ParentIndex,
+            new[] { b.Translation.X, b.Translation.Y, b.Translation.Z },
+            new[] { b.Rotation.X, b.Rotation.Y, b.Rotation.Z, b.Rotation.W },
+            new[] { b.Scale.X, b.Scale.Y, b.Scale.Z }
+        )).ToList();
+
+        var result = new DumpSkeletonResult(true, null,
+            $"GTA V Ped ({Path.GetFileNameWithoutExtension(path)})", path, bones);
+
+        var dir = Path.GetDirectoryName(outputPath);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        File.WriteAllText(outputPath, System.Text.Json.JsonSerializer.Serialize(result,
+            new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+                WriteIndented = true,
+            }));
+
+        return result;
+    }
+
     private static float[] Vec3(SharpDX.Vector3 v) => new[] { v.X, v.Y, v.Z };
 
     private static string SanitizeFileName(string? name)

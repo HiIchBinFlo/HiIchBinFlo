@@ -11,7 +11,7 @@ try
 {
     if (args.Length == 0)
     {
-        WriteError("No command given. Usage: codewalker-bridge <probe|inspect-ytd|inspect-ydd|export-geometry|repair-ytd|repair-ydd|replace-texture|gen-test-ytd> [args...]");
+        WriteError("No command given. Usage: codewalker-bridge <probe|inspect-ytd|inspect-ydd|export-geometry|repair-ytd|repair-ydd|replace-texture|gen-test-ytd|xml-to-ycd|ycd-to-xml|dump-skeleton> [args...]");
         return 1;
     }
 
@@ -34,6 +34,19 @@ try
             RequireArg(args, 4, "outputPath")
         ),
         "gen-test-ytd" => Commands.GenTestYtd(RequireArg(args, 1, "outputPath")),
+        // Animation (.ycd) support - see fivem-animation-converter/.
+        "xml-to-ycd" => Commands.XmlToYcd(
+            RequireArg(args, 1, "xmlPath"),
+            RequireArg(args, 2, "outputPath")
+        ),
+        "ycd-to-xml" => Commands.YcdToXml(
+            RequireArg(args, 1, "ycdPath"),
+            RequireArg(args, 2, "outputPath")
+        ),
+        "dump-skeleton" => Commands.DumpSkeleton(
+            RequireArg(args, 1, "path"),
+            RequireArg(args, 2, "outputPath")
+        ),
         _ => throw new ArgumentException($"Unknown command \"{args[0]}\"."),
     };
 

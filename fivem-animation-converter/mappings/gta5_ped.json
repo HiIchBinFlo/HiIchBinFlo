@@ -1,0 +1,83 @@
+{
+  "id": "gta5_ped",
+  "label": "GTA V Ped (standard skeleton)",
+  "description": "Reference metadata for the standard GTA V ped skeleton: bone names, bone tags and the parent hierarchy. See docs/ANIMATION_PIPELINE.md section 4 for sources.",
+  "authority_note": "Bone TAGS here are reference/cross-check data only. When a real skeleton profile is loaded (from the user's own .yft/.yft.xml), the tag written into the .ycd always comes from that profile - see app/converter/skeleton.py. This table never overrides real game data.",
+  "rest_note": "This file deliberately contains NO rest transforms. Rest pose data is Rockstar-owned game data and is not redistributable; the user supplies it once from their own GTA V install. See docs/SKELETON_SETUP.md.",
+  "bones": [
+    { "name": "SKEL_ROOT",        "tag": 0,     "parent": null,            "role": "root" },
+    { "name": "SKEL_Pelvis",      "tag": 11816, "parent": "SKEL_ROOT",     "role": "pelvis" },
+
+    { "name": "SKEL_L_Thigh",     "tag": 58271, "parent": "SKEL_Pelvis",   "role": "thigh.L" },
+    { "name": "SKEL_L_Calf",      "tag": 63931, "parent": "SKEL_L_Thigh",  "role": "calf.L" },
+    { "name": "SKEL_L_Foot",      "tag": 14201, "parent": "SKEL_L_Calf",   "role": "foot.L" },
+    { "name": "SKEL_L_Toe0",      "tag": 2108,  "parent": "SKEL_L_Foot",   "role": "toe.L" },
+
+    { "name": "SKEL_R_Thigh",     "tag": 51826, "parent": "SKEL_Pelvis",   "role": "thigh.R" },
+    { "name": "SKEL_R_Calf",      "tag": 36864, "parent": "SKEL_R_Thigh",  "role": "calf.R" },
+    { "name": "SKEL_R_Foot",      "tag": 52301, "parent": "SKEL_R_Calf",   "role": "foot.R" },
+    { "name": "SKEL_R_Toe0",      "tag": 20781, "parent": "SKEL_R_Foot",   "role": "toe.R" },
+
+    { "name": "SKEL_Spine_Root",  "tag": 57597, "parent": "SKEL_Pelvis",     "role": "spine_root" },
+    { "name": "SKEL_Spine0",      "tag": 23553, "parent": "SKEL_Spine_Root", "role": "spine_0" },
+    { "name": "SKEL_Spine1",      "tag": 24816, "parent": "SKEL_Spine0",     "role": "spine_1" },
+    { "name": "SKEL_Spine2",      "tag": 24817, "parent": "SKEL_Spine1",     "role": "spine_2" },
+    { "name": "SKEL_Spine3",      "tag": 24818, "parent": "SKEL_Spine2",     "role": "spine_3" },
+
+    { "name": "SKEL_Neck_1",      "tag": 39317, "parent": "SKEL_Spine3",   "role": "neck" },
+    { "name": "SKEL_Head",        "tag": 31086, "parent": "SKEL_Neck_1",   "role": "head" },
+
+    { "name": "SKEL_L_Clavicle",  "tag": 64729, "parent": "SKEL_Spine3",      "role": "clavicle.L" },
+    { "name": "SKEL_L_UpperArm",  "tag": 45509, "parent": "SKEL_L_Clavicle",  "role": "upperarm.L" },
+    { "name": "SKEL_L_Forearm",   "tag": 61163, "parent": "SKEL_L_UpperArm",  "role": "forearm.L" },
+    { "name": "SKEL_L_Hand",      "tag": 18905, "parent": "SKEL_L_Forearm",   "role": "hand.L" },
+
+    { "name": "SKEL_R_Clavicle",  "tag": 10706, "parent": "SKEL_Spine3",      "role": "clavicle.R" },
+    { "name": "SKEL_R_UpperArm",  "tag": 40269, "parent": "SKEL_R_Clavicle",  "role": "upperarm.R" },
+    { "name": "SKEL_R_Forearm",   "tag": 28252, "parent": "SKEL_R_UpperArm",  "role": "forearm.R" },
+    { "name": "SKEL_R_Hand",      "tag": 57005, "parent": "SKEL_R_Forearm",   "role": "hand.R" },
+
+    { "name": "SKEL_L_Finger00",  "tag": 26610, "parent": "SKEL_L_Hand",      "role": "thumb.01.L" },
+    { "name": "SKEL_L_Finger01",  "tag": 4089,  "parent": "SKEL_L_Finger00",  "role": "thumb.02.L" },
+    { "name": "SKEL_L_Finger02",  "tag": 4090,  "parent": "SKEL_L_Finger01",  "role": "thumb.03.L" },
+    { "name": "SKEL_L_Finger10",  "tag": 26611, "parent": "SKEL_L_Hand",      "role": "index.01.L" },
+    { "name": "SKEL_L_Finger11",  "tag": 4169,  "parent": "SKEL_L_Finger10",  "role": "index.02.L" },
+    { "name": "SKEL_L_Finger12",  "tag": 4170,  "parent": "SKEL_L_Finger11",  "role": "index.03.L" },
+    { "name": "SKEL_L_Finger20",  "tag": 26612, "parent": "SKEL_L_Hand",      "role": "middle.01.L" },
+    { "name": "SKEL_L_Finger21",  "tag": 4185,  "parent": "SKEL_L_Finger20",  "role": "middle.02.L" },
+    { "name": "SKEL_L_Finger22",  "tag": 4186,  "parent": "SKEL_L_Finger21",  "role": "middle.03.L" },
+    { "name": "SKEL_L_Finger30",  "tag": 26613, "parent": "SKEL_L_Hand",      "role": "ring.01.L" },
+    { "name": "SKEL_L_Finger31",  "tag": 4137,  "parent": "SKEL_L_Finger30",  "role": "ring.02.L" },
+    { "name": "SKEL_L_Finger32",  "tag": 4138,  "parent": "SKEL_L_Finger31",  "role": "ring.03.L" },
+    { "name": "SKEL_L_Finger40",  "tag": 26614, "parent": "SKEL_L_Hand",      "role": "pinky.01.L" },
+    { "name": "SKEL_L_Finger41",  "tag": 4153,  "parent": "SKEL_L_Finger40",  "role": "pinky.02.L" },
+    { "name": "SKEL_L_Finger42",  "tag": 4154,  "parent": "SKEL_L_Finger41",  "role": "pinky.03.L" },
+
+    { "name": "SKEL_R_Finger00",  "tag": 58866, "parent": "SKEL_R_Hand",      "role": "thumb.01.R" },
+    { "name": "SKEL_R_Finger01",  "tag": 64016, "parent": "SKEL_R_Finger00",  "role": "thumb.02.R" },
+    { "name": "SKEL_R_Finger02",  "tag": 64017, "parent": "SKEL_R_Finger01",  "role": "thumb.03.R" },
+    { "name": "SKEL_R_Finger10",  "tag": 58867, "parent": "SKEL_R_Hand",      "role": "index.01.R" },
+    { "name": "SKEL_R_Finger11",  "tag": 64096, "parent": "SKEL_R_Finger10",  "role": "index.02.R" },
+    { "name": "SKEL_R_Finger12",  "tag": 64097, "parent": "SKEL_R_Finger11",  "role": "index.03.R" },
+    { "name": "SKEL_R_Finger20",  "tag": 58868, "parent": "SKEL_R_Hand",      "role": "middle.01.R" },
+    { "name": "SKEL_R_Finger21",  "tag": 64112, "parent": "SKEL_R_Finger20",  "role": "middle.02.R" },
+    { "name": "SKEL_R_Finger22",  "tag": 64113, "parent": "SKEL_R_Finger21",  "role": "middle.03.R" },
+    { "name": "SKEL_R_Finger30",  "tag": 58869, "parent": "SKEL_R_Hand",      "role": "ring.01.R" },
+    { "name": "SKEL_R_Finger31",  "tag": 64064, "parent": "SKEL_R_Finger30",  "role": "ring.02.R" },
+    { "name": "SKEL_R_Finger32",  "tag": 64065, "parent": "SKEL_R_Finger31",  "role": "ring.03.R" },
+    { "name": "SKEL_R_Finger40",  "tag": 58870, "parent": "SKEL_R_Hand",      "role": "pinky.01.R" },
+    { "name": "SKEL_R_Finger41",  "tag": 64080, "parent": "SKEL_R_Finger40",  "role": "pinky.02.R" },
+    { "name": "SKEL_R_Finger42",  "tag": 64081, "parent": "SKEL_R_Finger41",  "role": "pinky.03.R" }
+  ],
+
+  "core_roles": [
+    "pelvis", "spine_0", "spine_1", "neck", "head",
+    "clavicle.L", "upperarm.L", "forearm.L", "hand.L",
+    "clavicle.R", "upperarm.R", "forearm.R", "hand.R",
+    "thigh.L", "calf.L", "foot.L",
+    "thigh.R", "calf.R", "foot.R"
+  ],
+
+  "root_motion_bone": "SKEL_ROOT",
+  "hip_bone": "SKEL_Pelvis"
+}

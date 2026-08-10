@@ -1,0 +1,61 @@
+{
+  "id": "generic",
+  "label": "Generic / mixed conventions (UE, Rigify, Unity, Daz, CC, Biped, VRM, GTA)",
+  "priority": 1,
+  "detect": { "min_matches": 0 },
+  "strip_prefixes": [
+    "mixamorig:", "mixamorig", "bip01", "bip001", "biped", "root_",
+    "rig_", "rig:", "def-", "def_", "org-", "mch-", "ctrl_", "jnt_", "j_", "b_", "bn_"
+  ],
+
+  "roles": {
+    "root": ["root", "reference", "skel_root", "rootnode", "armature", "trajectory", "bip01"],
+    "pelvis": ["hips", "pelvis", "skel_pelvis", "hip", "cog", "bip01pelvis", "j_bip_c_hips", "torso"],
+    "spine_root": ["spineroot", "skel_spineroot", "lowerspine"],
+    "spine_0": ["spine", "spine0", "spine01", "skel_spine0", "abdomen", "waist", "bip01spine", "j_bip_c_spine"],
+    "spine_1": ["spine1", "spine02", "chest", "skel_spine1", "abdomen2", "bip01spine1", "j_bip_c_chest"],
+    "spine_2": ["spine2", "spine03", "upperchest", "skel_spine2", "chestupper", "bip01spine2", "j_bip_c_upperchest"],
+    "spine_3": ["spine3", "spine04", "skel_spine3", "chest2", "bip01spine3"],
+    "neck": ["neck", "neck1", "neck01", "skel_neck1", "neck_01", "bip01neck", "j_bip_c_neck"],
+    "head": ["head", "skel_head", "bip01head", "j_bip_c_head"]
+  },
+
+  "base_roles": {
+    "clavicle": ["clavicle", "shoulder", "collar", "skelclavicle", "bip01clavicle", "shldr"],
+    "upperarm": ["upperarm", "arm", "upperarmtwist0", "skelupperarm", "bip01upperarm", "armupper", "upper_arm", "uparm"],
+    "forearm": ["forearm", "lowerarm", "foreram", "elbow", "skelforearm", "bip01forearm", "armlower", "lower_arm"],
+    "hand": ["hand", "wrist", "skelhand", "bip01hand"],
+    "thigh": ["thigh", "upleg", "upperleg", "hip", "skelthigh", "bip01thigh", "leg_upper", "upper_leg"],
+    "calf": ["calf", "leg", "lowerleg", "shin", "knee", "skelcalf", "bip01calf", "leg_lower", "lower_leg"],
+    "foot": ["foot", "ankle", "skelfoot", "bip01foot"],
+    "toe": ["toe", "toe0", "toebase", "toes", "ball", "skeltoe0", "bip01toe0"],
+
+    "thumb.01": ["handthumb1", "thumb1", "thumb01", "thumbproximal", "thumb", "finger00", "skelfinger00", "thumb_01"],
+    "thumb.02": ["handthumb2", "thumb2", "thumb02", "thumbintermediate", "finger01", "skelfinger01", "thumb_02"],
+    "thumb.03": ["handthumb3", "thumb3", "thumb03", "thumbdistal", "finger02", "skelfinger02", "thumb_03"],
+    "index.01": ["handindex1", "index1", "index01", "indexproximal", "index", "finger10", "skelfinger10", "index_01"],
+    "index.02": ["handindex2", "index2", "index02", "indexintermediate", "finger11", "skelfinger11", "index_02"],
+    "index.03": ["handindex3", "index3", "index03", "indexdistal", "finger12", "skelfinger12", "index_03"],
+    "middle.01": ["handmiddle1", "middle1", "middle01", "middleproximal", "middle", "finger20", "skelfinger20", "middle_01"],
+    "middle.02": ["handmiddle2", "middle2", "middle02", "middleintermediate", "finger21", "skelfinger21", "middle_02"],
+    "middle.03": ["handmiddle3", "middle3", "middle03", "middledistal", "finger22", "skelfinger22", "middle_03"],
+    "ring.01": ["handring1", "ring1", "ring01", "ringproximal", "ring", "finger30", "skelfinger30", "ring_01"],
+    "ring.02": ["handring2", "ring2", "ring02", "ringintermediate", "finger31", "skelfinger31", "ring_02"],
+    "ring.03": ["handring3", "ring3", "ring03", "ringdistal", "finger32", "skelfinger32", "ring_03"],
+    "pinky.01": ["handpinky1", "pinky1", "pinky01", "littleproximal", "pinky", "little", "finger40", "skelfinger40", "pinky_01"],
+    "pinky.02": ["handpinky2", "pinky2", "pinky02", "littleintermediate", "finger41", "skelfinger41", "pinky_02"],
+    "pinky.03": ["handpinky3", "pinky3", "pinky03", "littledistal", "finger42", "skelfinger42", "pinky_03"]
+  },
+
+  "side_tokens": {
+    "L": ["l", "lf", "left", "lft", "_l", "l_", ".l", "lefthand", "leftarm", "leftleg"],
+    "R": ["r", "rt", "right", "rgt", "_r", "r_", ".r", "righthand", "rightarm", "rightleg"]
+  },
+
+  "ignore_patterns": [
+    "^ik_", "_ik$", "^ik", "^ph_", "^mh_", "^rb_", "^bt_", "^sm_",
+    "_end$", "end$", "^twist", "twist\\d*$", "^cam", "^camera",
+    "^prop", "^weapon", "^facial", "^face", "^eye", "^jaw", "^tongue", "^teeth",
+    "^breast", "^cloth", "^hair", "^tail", "^skirt", "^bag", "^helper", "^corrective"
+  ]
+}

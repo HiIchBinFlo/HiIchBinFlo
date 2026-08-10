@@ -60,3 +60,31 @@ public record ExportGeometryResult(
     string? LodUsed,
     List<MeshPart>? Parts
 );
+
+// --- Animation (.ycd) support -------------------------------------------------
+// Added for the FBX -> FiveM animation converter (see
+// fivem-animation-converter/docs/ANIMATION_PIPELINE.md). The XML <-> binary
+// conversion is the one step in that pipeline that genuinely requires
+// CodeWalker.Core: Sollumz and Blender only ever speak CodeWalker XML.
+
+public record XmlToYcdResult(bool Ok, string? Error, string? OutputPath, int Bytes, int ClipCount, int AnimationCount);
+
+public record YcdToXmlResult(bool Ok, string? Error, string? OutputPath, int ClipCount, int AnimationCount);
+
+public record SkeletonBone(
+    string Name,
+    int Tag,
+    int Index,
+    int ParentIndex,
+    float[] Translation,
+    float[] Rotation,
+    float[] Scale
+);
+
+public record DumpSkeletonResult(
+    bool Ok,
+    string? Error,
+    string? Label,
+    string? Source,
+    List<SkeletonBone>? Bones
+);

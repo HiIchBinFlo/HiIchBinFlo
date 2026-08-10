@@ -1,0 +1,27 @@
+# FBX -> FiveM Animation Converter
+#
+# Install with:  pip install -r requirements.txt
+
+# --- Required -----------------------------------------------------------------
+
+# The GUI. The command line (`python -m app.main convert ...`) does not need it.
+PySide6>=6.5,<7
+
+# --- Development / testing ----------------------------------------------------
+
+pytest>=7.4
+
+# --- Optional -----------------------------------------------------------------
+#
+# Blender is NOT a pip dependency by default. The converter drives an installed
+# Blender headlessly (--background --python), which is the normal setup and what
+# the GUI's "Select Blender" button configures.
+#
+# If you would rather not install Blender separately, it is also published as a
+# Python module. It is a large download (hundreds of MB) and pins the Python
+# version hard - bpy 4.x/5.x require Python 3.11 - so it stays opt-in:
+#
+#     pip install bpy
+#
+# The converter detects either form automatically; `python -m app.main doctor`
+# reports which one it found.
