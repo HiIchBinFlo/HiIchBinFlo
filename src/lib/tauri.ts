@@ -109,6 +109,23 @@ export function assetAbsolutePath(dbPath: string, relativePath: string): string 
   return `${dbPath}.assets/${relativePath}`;
 }
 
+/**
+ * A `.ytd` file can bundle multiple textures in one dictionary - diffuse
+ * (color), normal, and specular maps are commonly packed together under the
+ * FiveM/GTA streaming convention, even though the *file* is named after the
+ * diffuse variant. Blindly taking the first texture in the dictionary can
+ * silently grab a normal or specular map instead, which renders as a
+ * mostly-black/gray/blue image - not a decode failure, just the wrong
+ * texture. The diffuse map's *name* almost universally contains "diff"
+ * (e.g. `jbib_diff_000_a_uni`), so prefer that; fall back to the first
+ * texture with extracted pixel data if nothing matches, rather than
+ * producing nothing at all. Mirrors `commands::thumbnails::pick_diffuse_dds`.
+ */
+export function pickDiffuseTexture(textures: DecodedTextureInfo[]): DecodedTextureInfo | undefined {
+  const withDds = textures.filter((t) => t.extractedDds);
+  return withDds.find((t) => t.name.toLowerCase().includes("diff")) ?? withDds[0];
+}
+
 /** Cache directory for extracted .dds files used by the mesh/texture preview (Phase 3). */
 export function previewCacheDir(dbPath: string): string {
   return `${dbPath}.assets/.preview-cache`;

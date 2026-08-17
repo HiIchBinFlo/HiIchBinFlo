@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MeshPreview } from "./MeshPreview";
-import { assetAbsolutePath, previewCacheDir, tauriApi, TauriUnavailableError } from "@/lib/tauri";
+import { assetAbsolutePath, pickDiffuseTexture, previewCacheDir, tauriApi, TauriUnavailableError } from "@/lib/tauri";
 import type { ClothingDrawable, DecodedLodInfo, MeshPart } from "@/types/clothing";
 import { cn } from "@/lib/utils";
 
@@ -73,7 +73,7 @@ export function MeshPreviewDialog({ open, onOpenChange, item, dbPath }: MeshPrev
       if (firstTexture) {
         const texPath = assetAbsolutePath(dbPath, firstTexture.relativePath);
         const inspectResult = await tauriApi.inspectYtd(texPath, previewCacheDir(dbPath)).catch(() => null);
-        const ddsPath = inspectResult?.textures?.[0]?.extractedDds;
+        const ddsPath = pickDiffuseTexture(inspectResult?.textures ?? [])?.extractedDds;
         if (ddsPath && !cancelled) {
           const base64 = await tauriApi.decodeTexturePng(ddsPath);
           if (!cancelled) setTextureDataUrl(`data:image/png;base64,${base64}`);

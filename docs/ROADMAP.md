@@ -443,6 +443,21 @@ unrelated to Design Studio:
    project's own dev environment; if blank/garbled previews still happen
    after switching between *different* items (not LOD tabs) rather than
    within one, that's the next place to look.
+4. **Thumbnails and the mesh preview's texture sometimes showed the wrong
+   map — mostly black/gray/blue images that looked broken but weren't.**
+   Root cause: a `.ytd` file can bundle multiple textures in one dictionary
+   (diffuse/color, normal, specular are commonly packed together), and
+   every place this project picked a texture out of a decoded `.ytd`
+   (`generate_thumbnails`, the mesh preview's texture load, the Inspector's
+   opportunistic per-item thumbnail) just took the *first* one in the
+   dictionary — sometimes a normal or specular map instead of the diffuse
+   map the file is actually named after. Fixed with a shared "prefer the
+   texture whose name contains 'diff'" helper
+   (`commands::thumbnails::pick_diffuse_dds` in Rust,
+   `src/lib/tauri.ts::pickDiffuseTexture` in TypeScript, kept in sync
+   deliberately the same way the slot system is), falling back to the
+   first texture with pixel data if nothing matches rather than producing
+   nothing.
 
 ### Batched thumbnail generation
 

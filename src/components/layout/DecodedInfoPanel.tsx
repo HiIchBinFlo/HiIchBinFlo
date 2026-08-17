@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { assetAbsolutePath, previewCacheDir, tauriApi, TauriUnavailableError } from "@/lib/tauri";
+import { assetAbsolutePath, pickDiffuseTexture, previewCacheDir, tauriApi, TauriUnavailableError } from "@/lib/tauri";
 import type { ClothingDrawable, DecodedDrawableInfo, DecodedTextureInfo } from "@/types/clothing";
 import { formatBytes } from "@/lib/utils";
 import { TextureViewer } from "@/components/texture/TextureViewer";
@@ -65,12 +65,15 @@ export function DecodedInfoPanel({ item, dbPath }: { item: ClothingDrawable; dbP
       setTextureYtdPaths(ytdPaths);
       setTextureErrors(errors);
 
-      // Opportunistically generate a card thumbnail from the first
-      // successfully-extracted texture, if the item doesn't have one yet.
-      const firstWithDds = decodedTextures.find((t) => t.extractedDds);
-      if (!item.thumbnail && firstWithDds?.extractedDds) {
+      // Opportunistically generate a card thumbnail from the diffuse
+      // texture, if the item doesn't have one yet. Prefers a texture named
+      // "diff" over just taking the first one, since a .ytd can bundle a
+      // normal/specular map alongside the diffuse map, and that map ending
+      // up as the thumbnail looks like a decode failure even though it isn't.
+      const diffuseTexture = pickDiffuseTexture(decodedTextures);
+      if (!item.thumbnail && diffuseTexture?.extractedDds) {
         try {
-          const base64 = await tauriApi.decodeTextureThumbnail(firstWithDds.extractedDds);
+          const base64 = await tauriApi.decodeTextureThumbnail(diffuseTexture.extractedDds);
           updateItem(item.id, { thumbnail: `data:image/png;base64,${base64}` });
         } catch {
           // Thumbnail generation is a nice-to-have; a failure here shouldn't
